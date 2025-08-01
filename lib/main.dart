@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart'; // <-- MUHIM O'ZGARISH
 import 'package:intl/intl.dart';
 
+import 'Categorya.dart';
+import 'Example.dart';
 import 'Page/Home.dart';
 
 void main() async { // <-- MUHIM O'ZGARISH
   WidgetsFlutterBinding.ensureInitialized(); // <-- MUHIM O'ZGARISH
   await initializeDateFormatting('uz', null); // <-- MUHIM O'ZGARISH
-  runApp(const PosApp());
+  runApp(const MyApp());
 }
 
 // Asosiy ilova vidjeti
-class PosApp extends StatelessWidget {
-  const PosApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +40,7 @@ class PosApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const PosScreen(),
+      home: PosScreen(),
     );
   }
 }

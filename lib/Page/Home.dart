@@ -2,6 +2,8 @@
   import 'package:intl/intl.dart';
   import 'dart:io';
 
+import '../Controller/StolController.dart';
+
   class Product {
     final int id;
     final String name;
@@ -40,10 +42,10 @@
         'sum': 12000.0,
         'status': 'pending',
         'items': [
-          {'name': 'Choy (ko\'k)', 'price': 3000, 'quantity': 1},
-          {'name': 'Somsa (go\'shtli)', 'price': 9000, 'quantity': 1},
-          {'name': 'Somsa (go\'shtli)', 'price': 9000, 'quantity': 1},
-          {'name': 'Somsa (go\'shtli)', 'price': 9000, 'quantity': 1},
+          {'name': 'Tor', 'price': 3000, 'quantity': 1},
+          {'name': 'Shirinlik ', 'price': 9000, 'quantity': 1},
+          {'name': 'Kofe ', 'price': 9000, 'quantity': 1},
+          {'name': 'Cola', 'price': 9000, 'quantity': 1},
         ],
       },
       6: {
@@ -96,6 +98,9 @@
       );
     }
 
+
+
+
     Future<void> _printCheck(Map<String, dynamic> order) async {
       const String printerIP = '192.168.0.106';
       const int port = 9100;
@@ -104,18 +109,29 @@
         StringBuffer receipt = StringBuffer();
         String centerText(String text, int width) => text.padLeft((width - text.length) ~/ 2 + text.length).padRight(width);
         receipt.writeln(centerText('--- Restoran Cheki ---', 32));
+        receipt.writeln(); // One blank line after restaurant name
         receipt.writeln(centerText('Buyurtma: ${order['orderId']}', 32));
+        receipt.writeln(); // One blank line after order number
         receipt.writeln(centerText('Stol: $_selectedTableId', 32));
+        receipt.writeln(); // One blank line after table number
         receipt.writeln(centerText('Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}', 32));
+        receipt.writeln(); // One blank line after time
         receipt.writeln(centerText('--------------------', 32));
+        receipt.writeln(); // One blank line before products header
         receipt.writeln(centerText('Mahsulotlar:', 32));
+        receipt.writeln(); // One blank line after products header
         for (var item in order['items'] as List) {
-          receipt.writeln('${item['name'].padRight(20)} ${item['quantity'] ?? 1}x ${NumberFormat.decimalPattern('uz').format(item['price'])} so\'m');
+          String name = item['name'].toString().length > 18 ? item['name'].toString().substring(0, 18) : item['name'].toString();
+          String price = '${item['price'].toInt()} so\'m';
+          String quantity = '${item['quantity'] ?? 1}x';
+          receipt.writeln('${name.padRight(18)}${quantity.padRight(4)} $price');
+          receipt.writeln(); // One blank line after each product
         }
         receipt.writeln(centerText('--------------------', 32));
-        receipt.writeln(centerText('Jami: ${NumberFormat.decimalPattern('uz').format(order['sum'])} so\'m', 32));
-        receipt.writeln(centerText('--- Rahmat! ---', 32));
-        receipt.writeln('\n\n\n\n\n');
+        receipt.writeln(); // One blank line before total
+        String total = '${order['sum'].toInt()} so\'m';
+        receipt.writeln(centerText('Jami: $total', 32));
+        receipt.writeln('\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n'); // 20 newlines for large gap before cut
         receipt.write('\x1D\x56\x00'); // Paper cut command
 
         Socket socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 5));
@@ -139,31 +155,36 @@
       showDialog(
         context: context,
         builder: (BuildContext context) {
-          final baseFontSize = MediaQuery.of(context).textScaler.scale(16.0); // biroz kattalashtirildi
+          final baseFontSize = MediaQuery.of(context).textScaler.scale(15.0);
 
           return AlertDialog(
-            titlePadding: EdgeInsets.only(top: baseFontSize),
-            contentPadding: EdgeInsets.symmetric(horizontal: baseFontSize * 0.8, vertical: baseFontSize * 0.6),
+            titlePadding: EdgeInsets.only(top: baseFontSize * 1.2),
+            contentPadding: EdgeInsets.symmetric(horizontal: baseFontSize * 0.7, vertical: baseFontSize * 0.5),
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Column(
               children: [
-                Icon(Icons.receipt_long_rounded, size: baseFontSize * 3.5, color: Colors.teal),
-                SizedBox(height: baseFontSize * 0.5),
+                Icon(Icons.receipt_long_rounded, size: baseFontSize * 3.5, color: Colors.teal.shade700),
+                SizedBox(height: baseFontSize * 0.8),
                 Text(
                   'Restoran Cheki',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: baseFontSize * 1.2,
+                    fontSize: baseFontSize * 1.5,
                     color: Colors.black87,
+                    letterSpacing: 1.2,
                   ),
                 ),
+                SizedBox(height: baseFontSize * 0.6), // One line spacing after restaurant name
               ],
             ),
             content: Container(
-              width: 340,
+              width: 320,
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
               child: Card(
-                elevation: 5,
-                color: const Color(0xFFFDFDFD),
+                elevation: 6,
+                color: const Color(0xFFFAFAFA),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: EdgeInsets.all(baseFontSize * 0.8),
@@ -173,67 +194,103 @@
                       children: [
                         Text(
                           'Buyurtma: ${order['orderId']}',
-                          style: TextStyle(fontSize: baseFontSize, fontFamily: 'Courier'),
+                          style: TextStyle(fontSize: baseFontSize * 0.95, fontFamily: 'Courier', fontWeight: FontWeight.w600),
                           textAlign: TextAlign.center,
                         ),
+                        SizedBox(height: baseFontSize * 0.6), // One line spacing after order number
                         Text(
                           'Stol: $_selectedTableId',
-                          style: TextStyle(fontSize: baseFontSize, fontFamily: 'Courier'),
+                          style: TextStyle(fontSize: baseFontSize * 0.95, fontFamily: 'Courier', fontWeight: FontWeight.w600),
                           textAlign: TextAlign.center,
                         ),
+                        SizedBox(height: baseFontSize * 0.6), // One line spacing after table number
                         Text(
                           'Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}',
-                          style: TextStyle(fontSize: baseFontSize, fontFamily: 'Courier'),
+                          style: TextStyle(fontSize: baseFontSize * 0.95, fontFamily: 'Courier', fontWeight: FontWeight.w600),
                           textAlign: TextAlign.center,
                         ),
-                        Divider(thickness: 1.2, height: baseFontSize * 1.2),
+                        SizedBox(height: baseFontSize * 0.6), // One line spacing before divider
+                        Divider(thickness: 1.5, height: baseFontSize * 1.2, color: Colors.teal.shade100),
+                        SizedBox(height: baseFontSize * 0.3), // One line spacing before products header
                         Text(
                           'Mahsulotlar:',
                           style: TextStyle(
-                            fontSize: baseFontSize * 1.1,
-                            fontWeight: FontWeight.w600,
+                            fontSize: baseFontSize * 1.05,
+                            fontWeight: FontWeight.bold,
                             fontFamily: 'Courier',
+                            color: Colors.teal.shade700,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        SizedBox(height: baseFontSize * 0.3),
+                        SizedBox(height: baseFontSize * 0.3), // One line spacing after products header
                         Table(
                           columnWidths: const {
-                            0: FlexColumnWidth(2),
+                            0: FlexColumnWidth(2.5),
                             1: FlexColumnWidth(1),
-                            2: FlexColumnWidth(1.5),
+                            2: FlexColumnWidth(2),
                           },
                           children: (order['items'] as List).map((item) {
+                            String name = item['name'].toString().length > 18 ? item['name'].toString().substring(0, 18) : item['name'].toString();
+                            String price = '${item['price'].toInt()} so\'m';
                             return TableRow(
                               children: [
                                 Padding(
-                                  padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.25),
+                                  padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.15),
                                   child: Text(
-                                    item['name'],
-                                    style: TextStyle(fontFamily: 'Courier', fontSize: baseFontSize * 0.95),
+                                    name,
+                                    style: TextStyle(
+                                      fontFamily: 'Courier',
+                                      fontSize: baseFontSize * 0.85,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    overflow: TextOverflow.clip,
                                   ),
                                 ),
                                 Padding(
-                                  padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.25),
+                                  padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.15),
                                   child: Text(
                                     '${item['quantity'] ?? 1}x',
-                                    style: TextStyle(fontFamily: 'Courier', fontSize: baseFontSize * 0.95),
+                                    style: TextStyle(
+                                      fontFamily: 'Courier',
+                                      fontSize: baseFontSize * 0.85,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                     textAlign: TextAlign.right,
                                   ),
                                 ),
                                 Padding(
-                                  padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.25),
+                                  padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.15),
                                   child: Text(
-                                    '${NumberFormat.decimalPattern('uz').format(item['price'])} so\'m',
-                                    style: TextStyle(fontFamily: 'Courier', fontSize: baseFontSize * 0.95),
+                                    price,
+                                    style: TextStyle(
+                                      fontFamily: 'Courier',
+                                      fontSize: baseFontSize * 0.85,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                     textAlign: TextAlign.right,
                                   ),
                                 ),
                               ],
                             );
-                          }).toList(),
+                          }).toList().asMap().entries.map((entry) {
+                            int index = entry.key;
+                            TableRow row = entry.value;
+                            return [
+                              row,
+                              if (index < (order['items'] as List).length - 1)
+                                TableRow(
+                                  children: [
+                                    SizedBox(height: baseFontSize * 0.6), // One line spacing after each product
+                                    SizedBox(height: baseFontSize * 0.6),
+                                    SizedBox(height: baseFontSize * 0.6),
+                                  ],
+                                ),
+                            ];
+                          }).expand((element) => element).toList(),
                         ),
-                        Divider(thickness: 1.2, height: baseFontSize * 1.2),
+                        SizedBox(height: baseFontSize * 0.3), // One line spacing after product list
+                        Divider(thickness: 1.5, height: baseFontSize * 1.2, color: Colors.teal.shade100),
+                        SizedBox(height: baseFontSize * 0.3), // One line spacing before total
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -241,32 +298,22 @@
                               'Jami:',
                               style: TextStyle(
                                 fontFamily: 'Courier',
-                                fontSize: baseFontSize * 1.1,
-                                fontWeight: FontWeight.w600,
+                                fontSize: baseFontSize * 1.4,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                             Text(
-                              '${NumberFormat.decimalPattern('uz').format(order['sum'])} so\'m',
+                              '${order['sum'].toInt()} so\'m',
                               style: TextStyle(
                                 fontFamily: 'Courier',
-                                fontSize: baseFontSize * 1.1,
-                                fontWeight: FontWeight.w700,
+                                fontSize: baseFontSize * 1.4,
+                                fontWeight: FontWeight.bold,
                                 color: Colors.teal.shade700,
                               ),
                             ),
                           ],
                         ),
-                        SizedBox(height: baseFontSize * 0.5),
-                        Text(
-                          '--- Rahmat! ---',
-                          style: TextStyle(
-                            fontFamily: 'Courier',
-                            fontSize: baseFontSize * 1.0,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.teal,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
+                        SizedBox(height: baseFontSize * 0.6), // One line spacing after total
                       ],
                     ),
                   ),
@@ -276,7 +323,10 @@
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: Text('Bekor qilish', style: TextStyle(fontSize: baseFontSize * 0.9)),
+                child: Text(
+                  'Bekor qilish',
+                  style: TextStyle(fontSize: baseFontSize * 0.9, color: Colors.grey.shade700),
+                ),
               ),
               ElevatedButton(
                 onPressed: () {
@@ -284,19 +334,26 @@
                   _printCheck(order);
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
+                  backgroundColor: Colors.teal.shade600,
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(horizontal: baseFontSize * 1.2, vertical: baseFontSize * 0.8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 4,
                 ),
-                child: Text('Chop etish', style: TextStyle(fontSize: baseFontSize * 0.9)),
+                child: Text(
+                  'Chop etish',
+                  style: TextStyle(fontSize: baseFontSize * 0.9, fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           );
         },
       );
     }
+
+
+
+
 
     @override
     Widget build(BuildContext context) {
@@ -321,7 +378,7 @@
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal,
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: baseFontSize * 1.5, vertical: baseFontSize * 0.8),
+                  padding: EdgeInsets.symmetric(horizontal: baseFontSize * 0.5, vertical: baseFontSize * 0.9),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   elevation: 2,
                 ),
@@ -343,7 +400,7 @@
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal,
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: baseFontSize * 1.5, vertical: baseFontSize * 0.8),
+                  padding: EdgeInsets.symmetric(horizontal: baseFontSize * 1.5, vertical: baseFontSize * 0.9),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   elevation: 2,
                 ),
@@ -369,30 +426,15 @@
             );
           },
         ),
-        bottomNavigationBar: Padding(
-          padding: EdgeInsets.all(baseFontSize * 0.5),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              ElevatedButton.icon(
-                icon: Icon(Icons.exit_to_app, size: baseFontSize * 1.2),
-                label: Text("Chiqish", style: TextStyle(fontSize: baseFontSize * 0.9)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: baseFontSize * 1.5, vertical: baseFontSize * 0.8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 2,
-                ),
-                onPressed: () {},
-              ),
-            ],
-          ),
-        ),
       );
     }
-  // Stollar javob beradi
+
+
+    final StolController stolControler = StolController();
+
+    // Stollar javob beradi
     Widget _buildTablesGrid(double fontSize, BoxConstraints constraints) {
+
       final width = constraints.maxWidth;
       final isMobile = width < 600;
       final isTablet = width >= 600 && width <= 1200;
@@ -424,6 +466,7 @@
         ),
       );
     }
+
     Widget _buildTableCard(Map<String, dynamic> t, double f) {
       final isSelected = t['id'] == _selectedTableId;
       final isPending = t['status'] == 'pending';
@@ -473,6 +516,10 @@
         ),
       );
     }
+
+
+
+
   // yon oyan
     Widget _buildOrderDetails(double baseFontSize, BoxConstraints constraints) {
       final order = _orders[_selectedTableId];
@@ -541,9 +588,19 @@
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Text(
-                      "${item['quantity'] ?? 1}x ${NumberFormat.decimalPattern('uz').format(item['price'])} so'm",
-                      style: TextStyle(fontSize: baseFontSize * 0.9),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "${item['quantity'] ?? 1}x",
+                          style: TextStyle(fontSize: baseFontSize * 0.9),
+                        ),
+                        SizedBox(width: baseFontSize * 1.8),
+                        Text(
+                          "${NumberFormat.decimalPattern('uz').format(item['price'])} so'm",
+                          style: TextStyle(fontSize: baseFontSize * 0.9),
+                        ),
+                      ],
                     ),
                   );
                 },
@@ -600,10 +657,12 @@
                 ),
               ),
             ),
+            SizedBox(height: 60,)
           ],
         ),
       );
     }
+
 
     Widget _buildInfoRow(IconData icon, String key, String value, double fontSize) {
       return Padding(
@@ -620,6 +679,8 @@
       );
     }
   }
+
+
 
   class OrderScreenContent extends StatefulWidget {
     final int? tableId;
@@ -674,86 +735,43 @@
     }
 
     double _calculateTotal() {
-      double total = 0;
-      for (var item in _cart) {
-        total += item.product.price * item.quantity;
-      }
-      return total;
+      return _cart.fold(0, (total, item) => total + item.product.price * item.quantity);
     }
 
     int _getQuantityInCart(Product product) {
-      try {
-        return _cart.firstWhere((item) => item.product.id == product.id).quantity;
-      } catch (e) {
-        return 0;
-      }
+      return _cart.firstWhere((item) => item.product.id == product.id, orElse: () => CartItem(product: product, quantity: 0)).quantity;
     }
 
     IconData _getCategoryIcon(String category) {
       switch (category.toLowerCase()) {
         case 'tortlar':
-          return Icons.bakery_dining; // More specific bakery icon
+          return Icons.bakery_dining;
         case 'taom':
-          return Icons.dinner_dining; // More elegant dining icon
+          return Icons.dinner_dining;
         case 'ichimlik':
-          return Icons.local_bar; // Stylish drink icon
+          return Icons.local_bar;
         default:
           return Icons.restaurant;
-      }
-    }
-
-    IconData _getProductIcon(Product product) {
-      switch (product.name.toLowerCase()) {
-        case 'cola':
-          return Icons.local_cafe; // Cola-specific drink icon
-        case 'fanta':
-          return Icons.local_bar; // Vibrant drink icon
-        case 'choy':
-          return Icons.water_drop; // Tea-specific icon
-        case 'medovik':
-          return Icons.bakery_dining; // Bakery icon for honey cake
-        case 'napoleon':
-          return Icons.cake_outlined; // Distinct cake icon
-        case 'osh':
-          return Icons.soup_kitchen; // Soup/bowl icon for osh
-        case 'shashlik':
-          return Icons.cookie_outlined; // BBQ-specific icon
-        default:
-          return Icons.restaurant;
-      }
-    }
-
-    Color _getProductIconColor(Product product) {
-      switch (product.name.toLowerCase()) {
-        case 'cola':
-          return Colors.grey.shade800;
-        case 'fanta':
-          return Colors.orange.shade600;
-        case 'choy':
-          return Colors.brown.shade400;
-        case 'medovik':
-          return Colors.amber.shade600;
-        case 'napoleon':
-          return Colors.pink.shade300;
-        case 'osh':
-          return Colors.green.shade600;
-        case 'shashlik':
-          return Colors.red.shade600;
-        default:
-          return Colors.teal.shade800;
       }
     }
 
     @override
     Widget build(BuildContext context) {
-      final baseFontSize = MediaQuery.of(context).textScaler.scale(16.0); // Increased base font size
-      final isMobile = MediaQuery.of(context).size.width < 600;
-      final isTablet = MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width <= 1200;
+      final screenWidth = MediaQuery.of(context).size.width;
+      final screenHeight = MediaQuery.of(context).size.height;
+      final baseFontSize = screenWidth * 0.035;
+      final isMobile = screenWidth < 600;
+      final padding = (screenWidth * 0.03).clamp(8.0, 16.0); // Min padding for small screens
 
       return Theme(
         data: Theme.of(context).copyWith(
           primaryColor: Colors.teal,
           scaffoldBackgroundColor: Colors.transparent,
+          textTheme: Theme.of(context).textTheme.apply(
+            fontSizeFactor: screenWidth * 0.0025,
+            bodyColor: Colors.black87,
+            displayColor: Colors.black87,
+          ),
         ),
         child: Scaffold(
           body: Container(
@@ -761,56 +779,55 @@
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.teal.shade700, Colors.teal.shade100],
+                colors: [Colors.teal.shade600, Colors.teal.shade50],
               ),
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final categoryWidth = isMobile ? 180.0 : 220.0; // Increased width
-                final maxCrossAxisExtent = isMobile ? 160.0 : isTablet ? 200.0 : 220.0; // Increased grid size
+            child: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final categoryWidth = isMobile ? screenWidth * 0.25 : screenWidth * 0.15;
 
-                return Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    baseFontSize * 0.6,
-                    baseFontSize * 0.9,
-                    baseFontSize * 0.6,
-                    baseFontSize * 0.6,
-                  ),
-                  child: Column(
-                    children: [
-                      _buildAppBar(baseFontSize),
-                      SizedBox(height: baseFontSize * 0.6),
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: categoryWidth,
-                              child: _buildCategoriesSection(baseFontSize),
-                            ),
-                            VerticalDivider(width: baseFontSize * 0.6),
-                            Expanded(
-                              child: _buildProductsSection(baseFontSize, maxCrossAxisExtent),
-                            ),
-                            VerticalDivider(width: baseFontSize * 0.6),
-                            Expanded(
-                              child: _buildOrderSection(baseFontSize),
-                            ),
-                          ],
+                  return Padding(
+                    padding: EdgeInsets.all(padding),
+                    child: Column(
+                      children: [
+                        _buildAppBar(baseFontSize, screenWidth),
+                        SizedBox(height: padding * 0.3),
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: categoryWidth,
+                                child: _buildCategoriesSection(baseFontSize, padding),
+                              ),
+                              VerticalDivider(width: padding * 0.5),
+                              Flexible(
+                                flex: 3,
+                                child: _buildProductsSection(baseFontSize, padding, screenWidth),
+                              ),
+                              VerticalDivider(width: padding * 0.5),
+                              Flexible(
+                                flex: 2,
+                                child: _buildOrderSection(baseFontSize, padding),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      _buildBottomActions(baseFontSize),
-                    ],
-                  ),
-                );
-              },
+                        SizedBox(height: padding * 0.3),
+                        _buildBottomActions(baseFontSize, padding, screenWidth),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
       );
     }
 
-    Widget _buildAppBar(double fontSize) {
+    Widget _buildAppBar(double fontSize, double screenWidth) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -820,64 +837,77 @@
               SizedBox(width: fontSize * 0.5),
               Text(
                 widget.tableId != null ? "Stol ${widget.tableId} • Stol: bo'sh" : "Yangi hisob",
-                style: TextStyle(fontSize: fontSize * 1.0, fontWeight: FontWeight.w600, color: Colors.white),
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  shadows: [Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1))],
+                ),
               ),
             ],
           ),
           IconButton(
             icon: Icon(Icons.close, size: fontSize * 1.4, color: Colors.white),
             onPressed: () => Navigator.of(context).pop(),
+            tooltip: 'Yopish',
           ),
         ],
       );
     }
 
-    Widget _buildCategoriesSection(double fontSize) {
+    Widget _buildCategoriesSection(double fontSize, double padding) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Kategoriyalar',
-            style: TextStyle(fontSize: fontSize * 1.1, fontWeight: FontWeight.bold, color: Colors.white),
+            style: TextStyle(
+              fontSize: fontSize * 1.1,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              shadows: [Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1))],
+            ),
           ),
-          SizedBox(height: fontSize * 0.5),
-          _buildCategoryButton('tortlar', fontSize),
-          SizedBox(height: fontSize * 0.5),
-          _buildCategoryButton('taom', fontSize),
-          SizedBox(height: fontSize * 0.5),
-          _buildCategoryButton('ichimlik', fontSize),
+          SizedBox(height: padding * 0.5),
+          _buildCategoryButton('tortlar', fontSize, padding),
+          SizedBox(height: padding * 0.5),
+          _buildCategoryButton('taom', fontSize, padding),
+          SizedBox(height: padding * 0.5),
+          _buildCategoryButton('ichimlik', fontSize, padding),
         ],
       );
     }
 
-    Widget _buildCategoryButton(String title, double fontSize) {
+    Widget _buildCategoryButton(String title, double fontSize, double padding) {
       final bool isSelected = _selectedCategory == title;
       return SizedBox(
-        width: double.infinity,
-        height: 70, // Increased height for larger buttons
+        height: fontSize * 2.8, // Slightly smaller for small screens
         child: ElevatedButton(
           onPressed: () => setState(() => _selectedCategory = title),
           style: ElevatedButton.styleFrom(
-            backgroundColor: isSelected ? Colors.teal.shade800 : Colors.white,
-            foregroundColor: isSelected ? Colors.white : Colors.teal.shade800,
-            elevation: isSelected ? 4 : 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            padding: EdgeInsets.symmetric(horizontal: fontSize * 0.7, vertical: fontSize * 0.7),
+            backgroundColor: isSelected ? Colors.teal.shade700 : Colors.white,
+            foregroundColor: isSelected ? Colors.white : Colors.teal.shade700,
+            elevation: isSelected ? 4 : 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            padding: EdgeInsets.symmetric(horizontal: padding * 0.4, vertical: padding * 0.3),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               Icon(
                 _getCategoryIcon(title),
-                size: fontSize * 1.3, // Slightly larger icon
-                color: isSelected ? Colors.white : Colors.teal.shade800,
+                size: fontSize * 0.9,
+                color: isSelected ? Colors.white : Colors.teal.shade700,
               ),
-              SizedBox(width: fontSize * 0.5),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: fontSize * 1.1,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              SizedBox(width: padding * 0.3),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: fontSize * 0.85,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -886,7 +916,7 @@
       );
     }
 
-    Widget _buildProductsSection(double fontSize, double maxCrossAxisExtent) {
+    Widget _buildProductsSection(double fontSize, double padding, double screenWidth) {
       final productsToShow = _allProducts.where((p) => p.category == _selectedCategory).toList();
 
       return Column(
@@ -894,28 +924,39 @@
         children: [
           Text(
             'Taomlar',
-            style: TextStyle(fontSize: fontSize * 1.1, fontWeight: FontWeight.bold, color: Colors.white),
+            style: TextStyle(
+              fontSize: fontSize * 1.1,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              shadows: [Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1))],
+            ),
           ),
-          SizedBox(height: fontSize * 0.5),
+          SizedBox(height: padding * 0.3),
           Expanded(
             child: Card(
-              elevation: 3, // Slightly increased elevation
+              elevation: 3,
               color: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               child: Padding(
-                padding: EdgeInsets.all(fontSize * 0.6),
-                child: GridView.builder(
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: maxCrossAxisExtent,
-                    childAspectRatio: 1.2,
-                    crossAxisSpacing: fontSize * 0.6,
-                    mainAxisSpacing: fontSize * 0.6,
-                  ),
-                  itemCount: productsToShow.length,
-                  itemBuilder: (context, index) {
-                    final product = productsToShow[index];
-                    return _buildProductCard(product, fontSize);
-                  },
+                padding: EdgeInsets.all(padding * 0.5),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: screenWidth < 600 ? 1.0 : 1.4, // Compact for small screens
+                        crossAxisSpacing: padding * 0.5,
+                        mainAxisSpacing: padding * 0.5,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                          final product = productsToShow[index];
+                          return _buildProductCard(product, fontSize, padding);
+                        },
+                        childCount: productsToShow.length,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -924,7 +965,7 @@
       );
     }
 
-    Widget _buildProductCard(Product product, double fontSize) {
+    Widget _buildProductCard(Product product, double fontSize, double padding) {
       final int quantityInCart = _getQuantityInCart(product);
       final bool isInCart = quantityInCart > 0;
 
@@ -932,20 +973,22 @@
         onTap: () => _addToCart(product),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          transform: Matrix4.identity()..scale(isInCart ? 1.02 : 1.0),
           decoration: BoxDecoration(
-            border: Border.all(color: isInCart ? Colors.teal.shade800 : Colors.grey.shade300, width: 2),
-            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: isInCart ? Colors.teal.shade700 : Colors.grey.shade200, width: 1),
+            borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
-                spreadRadius: 2,
-                blurRadius: 6,
-                offset: const Offset(0, 3),
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 3,
+                offset: const Offset(0, 1),
               ),
             ],
             color: Colors.white,
           ),
-          padding: EdgeInsets.all(fontSize * 0.6),
+          padding: EdgeInsets.all(padding * 0.5),
           child: Stack(
             children: [
               Column(
@@ -954,30 +997,33 @@
                 children: [
                   Text(
                     product.name,
-                    style: TextStyle(fontSize: fontSize * 1.0, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: fontSize * 0.85,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Expanded(
-                    child: Center(
-                      child: Icon(
-                        _getProductIcon(product),
-                        size: fontSize * 1.5, // Reduced icon size
-                        color: _getProductIconColor(product),
-                      ),
-                    ),
-                  ),
+                  Spacer(),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         '${_currencyFormatter.format(product.price)} soʻm',
-                        style: TextStyle(fontSize: fontSize * 0.9, color: Colors.teal.shade800, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: fontSize * 0.75,
+                          color: Colors.teal.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       if (isInCart)
                         Text(
                           '$quantityInCart dona',
-                          style: TextStyle(fontSize: fontSize * 0.8, color: Colors.black54),
+                          style: TextStyle(
+                            fontSize: fontSize * 0.65,
+                            color: Colors.grey.shade600,
+                          ),
                         ),
                     ],
                   ),
@@ -985,26 +1031,20 @@
               ),
               if (isInCart)
                 Positioned(
-                  top: fontSize * 0.2,
-                  right: fontSize * 0.2,
+                  top: padding * 0.2,
+                  right: padding * 0.2,
                   child: Container(
-                    constraints: BoxConstraints(
-                      minWidth: fontSize * 1.3,
-                      minHeight: fontSize * 1.3,
-                    ),
-                    padding: EdgeInsets.all(fontSize * 0.2),
+                    padding: EdgeInsets.all(padding * 0.15),
                     decoration: BoxDecoration(
-                      color: Colors.teal.shade800,
+                      color: Colors.teal.shade700,
                       shape: BoxShape.circle,
                     ),
-                    child: Center(
-                      child: Text(
-                        '$quantityInCart',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: fontSize * 0.8,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    child: Text(
+                      '$quantityInCart',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: fontSize * 0.65,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
@@ -1015,30 +1055,43 @@
       );
     }
 
-    Widget _buildOrderSection(double fontSize) {
+    Widget _buildOrderSection(double fontSize, double padding) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Zakaz [${_cart.length}]',
-            style: TextStyle(fontSize: fontSize * 1.1, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          SizedBox(height: fontSize * 0.5),
-          Expanded(
-            child: Card(
-              elevation: 3,
+            'Zakaz  - ${_cart.length}',
+            style: TextStyle(
+              fontSize: fontSize * 0.9,
+              fontWeight: FontWeight.bold,
               color: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              child: Padding(
-                padding: EdgeInsets.all(fontSize * 0.6),
-                child: _cart.isEmpty
-                    ? Center(child: Text('Savat boʻsh', style: TextStyle(fontSize: fontSize * 1.0)))
-                    : ListView.separated(
-                  itemCount: _cart.length,
-                  itemBuilder: (context, index) {
-                    return _buildOrderItem(_cart[index], fontSize);
-                  },
-                  separatorBuilder: (context, index) => Divider(height: fontSize * 1.3),
+              shadows: [Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1))],
+            ),
+          ),
+          SizedBox(height: padding * 0.4),
+          Expanded(
+            child: Container(
+              width: double.infinity, // Ensures the container takes full width
+              child: Card(
+                elevation: 2,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                child: Padding(
+                  padding: EdgeInsets.all(padding * 0.25),
+                  child: _cart.isEmpty
+                      ? Center(
+                    child: Text(
+                      'Savat boʻsh',
+                      style: TextStyle(fontSize: fontSize * 0.85, color: Colors.grey.shade600),
+                    ),
+                  )
+                      : ListView.separated(
+                    itemCount: _cart.length,
+                    separatorBuilder: (context, index) => Divider(height: padding * 0.5),
+                    itemBuilder: (context, index) {
+                      return _buildOrderItem(_cart[index], fontSize, padding);
+                    },
+                  ),
                 ),
               ),
             ),
@@ -1046,105 +1099,112 @@
         ],
       );
     }
-
-    Widget _buildOrderItem(CartItem item, double fontSize) {
-      return Padding(
-        padding: EdgeInsets.symmetric(vertical: fontSize * 0.4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.product.name,
-                    style: TextStyle(fontSize: fontSize * 1.0, fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: fontSize * 0.3),
-                  Text(
-                    '${_currencyFormatter.format(item.product.price * item.quantity)} soʻm',
-                    style: TextStyle(fontSize: fontSize * 0.9, color: Colors.teal.shade800, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
+    Widget _buildOrderItem(CartItem item, double fontSize, double padding) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            item.product.name,
+            style: TextStyle(
+              fontSize: fontSize * 0.75,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
             ),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.remove, size: fontSize * 1.0, color: Colors.teal.shade800),
-                    padding: EdgeInsets.all(fontSize * 0.4),
-                    constraints: BoxConstraints(minWidth: fontSize * 2.0, minHeight: fontSize * 2.0),
-                    onPressed: () => _updateQuantity(item, -1),
-                  ),
-                  Text(
-                    item.quantity.toString(),
-                    style: TextStyle(fontSize: fontSize * 1.0, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.add, size: fontSize * 1.0, color: Colors.teal.shade800),
-                    padding: EdgeInsets.all(fontSize * 0.4),
-                    constraints: BoxConstraints(minWidth: fontSize * 2.0, minHeight: fontSize * 2.0),
-                    onPressed: () => _updateQuantity(item, 1),
-                  ),
-                ],
-              ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          SizedBox(height: padding * 0.1),
+          Text(
+            '${_currencyFormatter.format(item.product.price * item.quantity)} soʻm',
+            style: TextStyle(
+              fontSize: fontSize * 0.65,
+              color: Colors.teal.shade700,
+              fontWeight: FontWeight.w600,
             ),
-          ],
-        ),
+          ),
+          SizedBox(height: padding * 0.1),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.remove, size: fontSize * 0.65, color: Colors.teal.shade700),
+                      padding: EdgeInsets.all(padding * 0.1),
+                      constraints: BoxConstraints(),
+                      onPressed: () => _updateQuantity(item, -1),
+                    ),
+                    Text(
+                      item.quantity.toString(),
+                      style: TextStyle(
+                        fontSize: fontSize * 0.7,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.add, size: fontSize * 0.65, color: Colors.teal.shade700),
+                      padding: EdgeInsets.all(padding * 0.1),
+                      constraints: BoxConstraints(),
+                      onPressed: () => _updateQuantity(item, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       );
     }
 
-    Widget _buildBottomActions(double fontSize) {
+    Widget _buildBottomActions(double fontSize, double padding, double screenWidth) {
       final double total = _calculateTotal();
       final bool isCartEmpty = _cart.isEmpty;
 
-      return Padding(
-        padding: EdgeInsets.only(top: fontSize * 0.6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: OutlinedButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.7, vertical: fontSize * 0.9),
-                side: BorderSide(color: Colors.teal.shade800),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 3,
-              ),
-              child: Text(
-                'Bekor qilish',
-                style: TextStyle(fontSize: fontSize * 1.0, color: Colors.teal.shade800),
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: padding * 1.0, vertical: padding * 0.4),
+              side: BorderSide(color: Colors.teal.shade700, width: 1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              backgroundColor: Colors.white,
+            ),
+            child: Text(
+              'Bekor qilish',
+              style: TextStyle(
+                fontSize: fontSize * 0.8,
+                color: Colors.teal.shade700,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            SizedBox(width: fontSize * 0.6),
-            ElevatedButton(
-              onPressed: isCartEmpty
-                  ? null
-                  : () {
-                Navigator.of(context).pop();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isCartEmpty ? Colors.grey.shade300 : Colors.teal.shade800,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.7, vertical: fontSize * 0.9),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 3,
-              ),
-              child: Text(
-                "Zakaz berish (${_currencyFormatter.format(total)} so'm)",
-                style: TextStyle(fontSize: fontSize * 1.0, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(width: padding),
+          ElevatedButton(
+            onPressed: isCartEmpty ? null : () => Navigator.of(context).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isCartEmpty ? Colors.grey.shade300 : Colors.teal.shade700,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: padding * 1.0, vertical: padding * 0.4),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 3,
+            ),
+            child: Text(
+              "Zakaz berish (${_currencyFormatter.format(total)} so'm)",
+              style: TextStyle(
+                fontSize: fontSize * 0.8,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
   }
