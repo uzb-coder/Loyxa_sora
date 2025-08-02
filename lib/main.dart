@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'Categorya.dart';
 import 'Example.dart';
 import 'Page/Home.dart';
+import 'Page/Login.dart';
+import 'Page/Users_page.dart';
 
 void main() async { // <-- MUHIM O'ZGARISH
   WidgetsFlutterBinding.ensureInitialized(); // <-- MUHIM O'ZGARISH
@@ -40,7 +42,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: PosScreen(),
+      home: UserListPage(),
     );
   }
 }
