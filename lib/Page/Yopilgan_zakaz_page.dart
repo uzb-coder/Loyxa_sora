@@ -2,34 +2,121 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-class OrderService {
-  final String baseUrl = "https://sora-b.vercel.app/api";
-  final String token =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
+import '../Controller/TokenCOntroller.dart';
 
-  Future<List<dynamic>> getPendingPayments() async {
-    final url = Uri.parse('$baseUrl/orders/pending-payments');
-    final response = await http.get(
-      url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['success'] == true && data['pending_orders'] != null) {
-        return List<dynamic>.from(data['pending_orders']);
+class AuthServices {
+  static const String baseUrl = "https://sora-b.vercel.app/api";
+  static const String userCode = "9090034564";
+  static const String password = "0000";
+
+  // Tokenni local storage (SharedPreferences) ga saqlash
+  static Future<void> saveToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+    print("✅ Token localda saqlandi");
+  }
+
+  // Local storage dan tokenni olish
+  static Future<String?> getTokens() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
+  }
+
+  // Login qilish va token olish
+  static Future<void> loginAndPrintToken() async {
+    final Uri loginUrl = Uri.parse('$baseUrl/auth/login');
+
+    print("Yuborilayotgan ma'lumot: user_code=$userCode, password=$password");
+
+    try {
+      final response = await http.post(
+        loginUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_code': userCode,
+          'password': password,
+        }),
+      );
+
+      print("📥 Status Code: ${response.statusCode}");
+      print("📥 Response Body: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final String token = data['token'];
+        await saveToken(token);
+        print("✅ Token muvaffaqiyatli olindi: $token");
       } else {
-        return [];
+        print("❌ Login xatolik. Status: ${response.statusCode}, Body: ${response.body}");
+        throw Exception('Login xatolik: ${response.statusCode}');
       }
-    } else {
-      throw Exception('Xato: ${response.statusCode}');
+    } catch (e) {
+      print("❗ Xatolik yuz berdi: $e");
+      throw Exception('Login xatolik: $e');
     }
   }
 }
 
+class OrderService {
+  final String baseUrl = "https://sora-b.vercel.app/api";
+  String? _token;
+
+  // Initialize token
+  Future<void> _initializeToken() async {
+    try {
+      _token = await AuthServices.getTokens();
+      if (_token == null) {
+        await AuthService.loginAndPrintToken();
+        _token = await AuthService.getToken();
+      }
+      if (_token == null) {
+        throw Exception('Token olishda xatolik: Token null bo\'lib qoldi');
+      }
+      print("✅ Token muvaffaqiyatli olindi: $_token");
+    } catch (e) {
+      print("❗ Token olishda xatolik: $e");
+      throw Exception('Token olishda xatolik: $e');
+    }
+  }
+
+  Future<List<dynamic>> getPendingPayments() async {
+    // Tokenni har safar yangilash
+    await _initializeToken();
+
+    if (_token == null) {
+      throw Exception('Token topilmadi, iltimos qayta urinib ko\'ring');
+    }
+
+    final url = Uri.parse('$baseUrl/orders/pending-payments');
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['pending_orders'] != null) {
+          return List<dynamic>.from(data['pending_orders']);
+        } else {
+          return [];
+        }
+      } else {
+        throw Exception('Xato: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print("❗ API xatoligi: $e");
+      throw Exception('API xatoligi: $e');
+    }
+  }
+}
 class MainPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {

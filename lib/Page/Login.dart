@@ -60,6 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _errorMessage;
 
+
   Future<void> _login() async {
     final pin = _pinController.text.trim();
 
@@ -86,12 +87,16 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Muvaffaqiyatli kirdingiz!')),
         );
-        // ✅ HOME PAGE ga o'tkazish
+
+        // Token ni PosScreen ga uzatish:
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => PosScreen(user: widget.user)),
+          MaterialPageRoute(
+            builder: (_) => PosScreen(user: widget.user,),
+          ),
         );
-      } else {
+      }
+      else {
         final error = jsonDecode(response.body);
         setState(() {
           _errorMessage = error['message'] ?? 'Login amalga oshmadi.';

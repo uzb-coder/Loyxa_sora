@@ -103,9 +103,32 @@ class _PosScreenState extends State<PosScreen> {
   String? _selectedTableId;
   List<Order> _selectedTableOrders = [];
   bool _isLoadingOrders = false;
+  String? _token; // Store the token dynamically
 
-  final String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
+  @override
+  void initState() {
+    super.initState();
+    _initializeToken(); // Fetch token on initialization
+  }
 
+  Future<void> _initializeToken() async {
+    try {
+      // Check if token exists in SharedPreferences
+      _token = await AuthService.getToken();
+      if (_token == null) {
+        // If no token, perform login to get a new one
+        await AuthService.loginAndPrintToken();
+        _token = await AuthService.getToken();
+      }
+      if (_token == null) {
+        print("❌ Token olishda xatolik: Token null bo'lib qoldi");
+      } else {
+        print("✅ Token muvaffaqiyatli olindi: $_token");
+      }
+    } catch (e) {
+      print("❗ Token olishda xatolik: $e");
+    }
+  }
   void _handleTableTap(String tableName, String tableId) {
     setState(() {
       _selectedTableName = tableName;
@@ -115,6 +138,10 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _fetchOrdersForTable(String tableId) async {
+    if (_token == null) {
+      print("❌ Token topilmadi, iltimos qayta urinib ko'ring");
+      return;
+    }
     setState(() {
       _isLoadingOrders = true;
     });
@@ -126,7 +153,7 @@ class _PosScreenState extends State<PosScreen> {
         Uri.parse(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $_token',
         },
       );
 
@@ -727,6 +754,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   List<Ovqat> _filteredProducts = [];
   bool _isLoading = true;
   String? _error;
+  String? _token; // Store the token dynamically
 
   final List<CartItem> _cart = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
@@ -737,7 +765,9 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   void initState() {
     super.initState();
     _loadData();
+    _initializeToken();
   }
+
 
   Future<void> _loadData() async {
     try {
@@ -1182,8 +1212,23 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   }
 
   bool _isSubmitting = false;
-  final String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 
+  Future<void> _initializeToken() async {
+    try {
+      _token = await AuthService.getToken();
+      if (_token == null) {
+        await AuthService.loginAndPrintToken();
+        _token = await AuthService.getToken();
+      }
+      if (_token == null) {
+        print("❌ Token olishda xatolik: Token null bo'lib qoldi");
+      } else {
+        print("✅ Token muvaffaqiyatli olindi: $_token");
+      }
+    } catch (e) {
+      print("❗ Token olishda xatolik: $e");
+    }
+  }
   Future<void> _createOrderAndPrint() async {
     if (_isSubmitting || _cart.isEmpty) return;
 
@@ -1210,7 +1255,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         Uri.parse(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $_token',
         },
         body: body,
       );
@@ -1275,7 +1320,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
 
       receipt.writeln(centerText('--- Restoran Cheki ---', 32));
       receipt.writeln();
-      receipt.writeln(centerText('Buyurtma: ${orderData['_id'] ?? 'N/A'}', 32));
+      receipt.writeln(centerText('Buyurtma: ${orderData['_id'] ?? '#001'}', 32));
       receipt.writeln();
       receipt.writeln(centerText('Stol: ${widget.tableName ?? 'N/A'}', 32));
       receipt.writeln();
@@ -1514,11 +1559,32 @@ class ZakazDetailPage extends StatefulWidget {
 
 class _ZakazDetailPageState extends State<ZakazDetailPage> {
   final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
-  final String token =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
-
+  String? _token; // Store the token dynamically
   bool _isSubmitting = false;
 
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeToken(); // Fetch token on initialization
+  }
+
+  Future<void> _initializeToken() async {
+    try {
+      _token = await AuthService.getToken();
+      if (_token == null) {
+        await AuthService.loginAndPrintToken();
+        _token = await AuthService.getToken();
+      }
+      if (_token == null) {
+        print("❌ Token olishda xatolik: Token null bo'lib qoldi");
+      } else {
+        print("✅ Token muvaffaqiyatli olindi: $_token");
+      }
+    } catch (e) {
+      print("❗ Token olishda xatolik: $e");
+    }
+  }
   Future<void> createOrder(BuildContext context) async {
     if (_isSubmitting) return;
 
@@ -1545,7 +1611,7 @@ class _ZakazDetailPageState extends State<ZakazDetailPage> {
         Uri.parse(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
+          'Authorization': 'Bearer $_token',
         },
         body: body,
       );
