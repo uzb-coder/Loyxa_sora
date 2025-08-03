@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'dart:async';
 
 import '../Controller/usersCOntroller.dart';
+import '../Example.dart';
 import 'Home.dart';
 import 'Users_page.dart';
 
@@ -74,10 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final response = await http.post(
         loginUrl,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_code': widget.user.userCode,
-          'password': pin,
-        }),
+        body: jsonEncode({'user_code': widget.user.userCode, 'password': pin}),
       );
 
       if (response.statusCode == 200) {
@@ -91,9 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
         // ✅ HOME PAGE ga o'tkazish
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => PosScreen(user: widget.user,),
-          ),
+          MaterialPageRoute(builder: (_) => PosScreen(user: widget.user)),
         );
       } else {
         final error = jsonDecode(response.body);
@@ -228,14 +224,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               Text(
                 '${widget.user.role}', // ✅ endi ishlaydi
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '${widget.user.userCode}', // ✅ endi ishlaydi
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
