@@ -176,6 +176,7 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _closeOrder(Order order) async {
+    print("Closing order ID: ${order.id}, User ID: ${order.userId}, Current User: ${widget.user.id}");
     if (order.userId != widget.user.id) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -192,17 +193,22 @@ class _PosScreenState extends State<PosScreen> {
       });
 
       bool success = await Zakazcontroller().closeOrder(order.id);
+      print("Close order response: $success");
 
       if (success) {
         setState(() {
           _selectedTableOrders.removeWhere((o) => o.id == order.id);
         });
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Zakaz muvaffaqiyatli yopildi')),
         );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zakazni yopishda xatolik yuz berdi')),
+        );
       }
     } catch (e) {
+      print("Close order error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Xatolik yuz berdi: $e')),
       );
@@ -212,7 +218,6 @@ class _PosScreenState extends State<PosScreen> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final baseFontSize = MediaQuery.of(context).textScaler.scale(14.0);
@@ -419,256 +424,6 @@ class _PosScreenState extends State<PosScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Future<void> _printCheck(Order order) async {
-    const String printerIP = '192.168.0.106';
-    const int port = 9100;
-
-    try {
-      StringBuffer receipt = StringBuffer();
-      String centerText(String text, int width) => text
-          .padLeft((width - text.length) ~/ 2 + text.length)
-          .padRight(width);
-
-      receipt.writeln(centerText('--- Restoran Cheki ---', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Buyurtma: ${order.id}', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Stol: ${_selectedTableName ?? 'N/A'}', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Hodim: ${order.firstName}', 32));
-      receipt.writeln();
-      receipt.writeln(
-        centerText(
-          'Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}',
-          32,
-        ),
-      );
-      receipt.writeln();
-      receipt.writeln(centerText('--------------------', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Mahsulotlar:', 32));
-      receipt.writeln();
-
-      for (var item in order.items) {
-        String name = item.name != null && item.name!.length > 18
-            ? item.name!.substring(0, 18)
-            : item.name ?? 'Noma\'lum mahsulot';
-        String quantity = '${item.quantity}x';
-        receipt.writeln('${name.padRight(18)}$quantity');
-        receipt.writeln();
-      }
-
-      receipt.writeln(centerText('--------------------', 32));
-      receipt.writeln('\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n');
-      receipt.write('\x1D\x56\x00');
-
-      Socket socket = await Socket.connect(
-        printerIP,
-        port,
-        timeout: const Duration(seconds: 5),
-      );
-      socket.write(receipt.toString());
-      await socket.flush();
-      socket.destroy();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Chek printerga yuborildi!')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Printer xatoligi: $e')),
-      );
-    }
-  }
-
-  void _showCheckPreviewDialog(Order order) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        final baseFontSize = MediaQuery.of(context).textScaler.scale(15.0);
-
-        return AlertDialog(
-          titlePadding: EdgeInsets.only(top: baseFontSize * 1.2),
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: baseFontSize * 0.7,
-            vertical: baseFontSize * 0.5,
-          ),
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Column(
-            children: [
-              Icon(
-                Icons.receipt_long_rounded,
-                size: baseFontSize * 3.5,
-                color: Colors.teal.shade700,
-              ),
-              SizedBox(height: baseFontSize * 0.8),
-              Text(
-                'Restoran Cheki',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: baseFontSize * 1.5,
-                  color: Colors.black87,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              SizedBox(height: baseFontSize * 0.6),
-            ],
-          ),
-          content: Container(
-            width: 320,
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
-            child: Card(
-              elevation: 6,
-              color: const Color(0xFFFAFAFA),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: EdgeInsets.all(baseFontSize * 0.8),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Buyurtma: ${order.id}',
-                        style: TextStyle(
-                          fontSize: baseFontSize * 0.95,
-                          fontFamily: 'Courier',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: baseFontSize * 0.6),
-                      Text(
-                        'Stol: ${_selectedTableName ?? 'N/A'}',
-                        style: TextStyle(
-                          fontSize: baseFontSize * 0.95,
-                          fontFamily: 'Courier',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: baseFontSize * 0.6),
-                      Text(
-                        'Hodim: ${order.firstName}',
-                        style: TextStyle(
-                          fontSize: baseFontSize * 0.95,
-                          fontFamily: 'Courier',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: baseFontSize * 0.6),
-                      Text(
-                        'Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}',
-                        style: TextStyle(
-                          fontSize: baseFontSize * 0.95,
-                          fontFamily: 'Courier',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: baseFontSize * 0.6),
-                      Divider(thickness: 1.5, height: baseFontSize * 1.2, color: Colors.teal.shade100),
-                      SizedBox(height: baseFontSize * 0.3),
-                      Text(
-                        'Mahsulotlar:',
-                        style: TextStyle(
-                          fontSize: baseFontSize * 1.05,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Courier',
-                          color: Colors.teal.shade700,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: baseFontSize * 0.3),
-                      Table(
-                        columnWidths: const {
-                          0: FlexColumnWidth(2.5),
-                          1: FlexColumnWidth(1),
-                        },
-                        children: order.items.map((item) {
-                          String name = item.name != null && item.name!.length > 18
-                              ? item.name!.substring(0, 18)
-                              : item.name ?? 'Noma\'lum';
-                          return TableRow(
-                            children: [
-                              Padding(
-                                padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.15),
-                                child: Text(
-                                  name,
-                                  style: TextStyle(
-                                    fontFamily: 'Courier',
-                                    fontSize: baseFontSize * 0.85,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.clip,
-                                ),
-                              ),
-                              Padding(
-                                padding: EdgeInsets.symmetric(vertical: baseFontSize * 0.15),
-                                child: Text(
-                                  '${item.quantity}x',
-                                  style: TextStyle(
-                                    fontFamily: 'Courier',
-                                    fontSize: baseFontSize * 0.85,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                      SizedBox(height: baseFontSize * 0.3),
-                      Divider(thickness: 1.5, height: baseFontSize * 1.2, color: Colors.teal.shade100),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Bekor qilish',
-                style: TextStyle(
-                  fontSize: baseFontSize * 0.9,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _printCheck(order);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal.shade600,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(
-                  horizontal: baseFontSize * 1.2,
-                  vertical: baseFontSize * 0.8,
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 4,
-              ),
-              child: Text(
-                'Chop etish',
-                style: TextStyle(
-                  fontSize: baseFontSize * 0.9,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -943,6 +698,8 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 }
+
+
 
 class OrderScreenContent extends StatefulWidget {
   final User user;
@@ -1458,10 +1215,21 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         body: body,
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final orderData = jsonDecode(response.body);
+      print("✅ Printer ip olish uchun ${response.body}");
 
-        await _printOrderDirectly(orderData);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+
+        // Printer IP ni olish
+        final String printerIP = responseData['printing']['results'][0]['printer_ip'] ?? '192.168.0.106';
+
+        // Zakaz ID va boshqa ma’lumotlar
+        final Map<String, dynamic> orderData = {
+          '_id': responseData['order']['id'],
+        };
+
+        // Printerga yuborish
+        await _printOrderDirectly(orderData, printerIP);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1496,8 +1264,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
-  Future<void> _printOrderDirectly(Map<String, dynamic> orderData) async {
-    const String printerIP = '192.168.0.106';
+  Future<void> _printOrderDirectly(Map<String, dynamic> orderData, String printerIP) async {
     const int port = 9100;
 
     try {
@@ -1551,6 +1318,8 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       print('Printer xatoligi: $e');
     }
   }
+
+
 
   Widget _buildBottomActions(double fontSize, double padding) {
     final double total = _calculateTotal();
@@ -1720,6 +1489,8 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 }
+
+
 
 class ZakazDetailPage extends StatefulWidget {
   final String tableId;

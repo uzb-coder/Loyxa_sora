@@ -7,29 +7,29 @@ class Zakazcontroller {
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 
   Future<bool> closeOrder(String orderId) async {
-    final url = Uri.parse('$baseUrl/orders/close/$orderId');
+    const String apiUrl = "https://sora-b.vercel.app/api/orders/close/";
+    final String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 
-    final response = await http.put(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      if (data['success'] == true) {
+    try {
+      final response = await http.put(
+        Uri.parse("$apiUrl$orderId"),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      print("Close order API response: Status=${response.statusCode}, Body=${response.body}");
+      if (response.statusCode == 200) {
         return true;
       } else {
-        throw Exception(data['message']);
+        print("Close order failed: ${response.statusCode} - ${response.body}");
+        return false;
       }
-    } else {
-      throw Exception('Xatolik: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      print("Close order error: $e");
+      return false;
     }
   }
-
-
 
 
 
