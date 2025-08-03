@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'dart:io';
+import 'dart:async';
 
-import '../Categorya.dart';
 import '../Controller/Categorya_Controller.dart';
 import '../Controller/StolController.dart';
 import '../Controller/OvqatCOntroller.dart';
@@ -54,7 +54,8 @@ class Order {
       firstName: json['waiter_name'] ?? json['first_name'] ?? '',
       items: (json['items'] as List?)
           ?.map((item) => OrderItem.fromJson(item))
-          .toList() ?? [],
+          .toList() ??
+          [],
       totalPrice: (json['total_price'] ?? 0).toDouble(),
       status: json['status'] ?? '',
       createdAt: json['createdAt'] ?? '',
@@ -105,10 +106,71 @@ class _PosScreenState extends State<PosScreen> {
   bool _isLoadingOrders = false;
   String? _token;
 
+  // Real-time uchun yangi o'zgaruvchilar
+  Timer? _realTimeTimer;
+  List<StolModel> _tables = [];
+  Map<String, bool> _tableOccupiedStatus = {};
+  bool _isLoadingTables = false;
+
   @override
   void initState() {
     super.initState();
     _initializeToken();
+    _startRealTimeUpdates();
+  }
+
+  @override
+  void dispose() {
+    _realTimeTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startRealTimeUpdates() {
+    _realTimeTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      _checkTableStatuses();
+    });
+  }
+
+  Future<void> _checkTableStatuses() async {
+    if (_token == null) return;
+
+    try {
+      Map<String, bool> newTableStatus = {};
+
+      for (var table in _tables) {
+        final response = await http.get(
+          Uri.parse('https://sora-b.vercel.app/api/orders/table/${table.id}'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_token',
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final List<dynamic> tableOrders = jsonDecode(response.body);
+          bool isOccupied = tableOrders.any((order) => order['status'] == 'pending');
+          newTableStatus[table.id] = isOccupied;
+        } else {
+          newTableStatus[table.id] = false;
+        }
+      }
+
+      if (!_mapEquals(newTableStatus, _tableOccupiedStatus)) {
+        setState(() {
+          _tableOccupiedStatus = newTableStatus;
+        });
+      }
+    } catch (e) {
+      print("Stollar holatini tekshirishda xatolik: $e");
+    }
+  }
+
+  bool _mapEquals(Map<String, bool> map1, Map<String, bool> map2) {
+    if (map1.length != map2.length) return false;
+    for (var key in map1.keys) {
+      if (map1[key] != map2[key]) return false;
+    }
+    return true;
   }
 
   Future<void> _initializeToken() async {
@@ -122,9 +184,31 @@ class _PosScreenState extends State<PosScreen> {
         print("❌ Token olishda xatolik: Token null bo'lib qoldi");
       } else {
         print("✅ Token muvaffaqiyatli olindi: $_token");
+        _loadInitialTables();
       }
     } catch (e) {
       print("❗ Token olishda xatolik: $e");
+    }
+  }
+
+  Future<void> _loadInitialTables() async {
+    setState(() {
+      _isLoadingTables = true;
+    });
+
+    try {
+      final stolController = StolController();
+      final tables = await stolController.fetchTables();
+      setState(() {
+        _tables = tables;
+        _isLoadingTables = false;
+      });
+      _checkTableStatuses();
+    } catch (e) {
+      setState(() {
+        _isLoadingTables = false;
+      });
+      print("Stollarni yuklashda xatolik: $e");
     }
   }
 
@@ -161,9 +245,7 @@ class _PosScreenState extends State<PosScreen> {
         setState(() {
           _selectedTableOrders = data
               .map((json) => Order.fromJson(json))
-              .where((order) =>
-          order.userId == widget.user.id &&
-              order.status == 'pending')
+              .where((order) => order.status == 'pending')
               .toList();
           _isLoadingOrders = false;
         });
@@ -183,6 +265,27 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   void _showOrderScreenDialog(String tableId) {
+    bool isOccupied = _tableOccupiedStatus[tableId] ?? false;
+
+    if (isOccupied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('Bu stol band! Yangi hisob ochib bo\'lmaydi.'),
+            ],
+          ),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -194,6 +297,7 @@ class _PosScreenState extends State<PosScreen> {
             user: widget.user,
             onOrderCreated: () {
               _fetchOrdersForTable(tableId);
+              _checkTableStatuses();
             },
           ),
         );
@@ -202,19 +306,26 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _closeOrder(Order order) async {
+    if (order.userId != widget.user.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('Faqat o\'zingiz yaratgan zakazni yopa olasiz!'),
+            ],
+          ),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     print("Closing order ID: ${order.id}");
-
-    // Bu shartni olib tashladik - endi har qanday afitsant zakazni yopa oladi
-    // if (order.userId != widget.user.id) {
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     const SnackBar(
-    //       content: Text('Bu zakazni faqat uni yaratgan afitsant yopa oladi!'),
-    //       backgroundColor: Colors.red,
-    //     ),
-    //   );
-    //   return;
-    // }
-
     try {
       setState(() {
         order.isProcessing = true;
@@ -227,18 +338,48 @@ class _PosScreenState extends State<PosScreen> {
         setState(() {
           _selectedTableOrders.removeWhere((o) => o.id == order.id);
         });
+
+        _checkTableStatuses();
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Zakaz muvaffaqiyatli yopildi')),
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('Zakaz muvaffaqiyatli yopildi'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Zakazni yopishda xatolik yuz berdi')),
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline_rounded, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('Zakazni yopishda xatolik yuz berdi'),
+              ],
+            ),
+            backgroundColor: Colors.red.shade600,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
       }
     } catch (e) {
       print("Close order error: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Xatolik yuz berdi: $e')),
+        SnackBar(
+          content: Text('Xatolik yuz berdi: $e'),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       );
     } finally {
       setState(() {
@@ -246,6 +387,7 @@ class _PosScreenState extends State<PosScreen> {
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -254,189 +396,305 @@ class _PosScreenState extends State<PosScreen> {
     final isTablet = screenWidth >= 600 && screenWidth <= 1200;
     final isMobile = screenWidth < 600;
 
-    // Desktop uchun maksimal kenglik
     final maxWidth = isDesktop ? 1400.0 : screenWidth;
-    final baseFontSize = isDesktop ? 14.0 : (isTablet ? 16.0 : 14.0);
+    final baseFontSize = isDesktop ? 15.0 : (isTablet ? 16.0 : 14.0);
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(isDesktop ? 70 : 60),
-        child:AppBar(
-          backgroundColor: Colors.white,
-          elevation: 2,
-          automaticallyImplyLeading: false,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: Colors.black),
-            onPressed: () {
-              Navigator.pop(context); // Bitta orqaga qaytadi
-            },
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Icon(Icons.replay),
-            )
-          ],
-          flexibleSpace: Center(
-            child: Container(
-              width: maxWidth,
-              padding: EdgeInsets.symmetric(
-                horizontal: isDesktop ? 24 : 16,
-                vertical: 8,
+        preferredSize: Size.fromHeight(isDesktop ? 75 : 65),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                offset: const Offset(0, 2),
+                blurRadius: 12,
+                spreadRadius: 0,
               ),
-              child: Row(
-                children: [
-                  // User info
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.teal.shade200),
+            ],
+          ),
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            automaticallyImplyLeading: false,
+            leading: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Color(0xFF1E293B)),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+            flexibleSpace: Center(
+              child: Container(
+                width: maxWidth,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isDesktop ? 28 : 18,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 60),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFF3B82F6).withOpacity(0.1),
+                            const Color(0xFF1D4ED8).withOpacity(0.1),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: const Color(0xFF3B82F6).withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3B82F6).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.person_rounded,
+                              color: const Color(0xFF1D4ED8),
+                              size: baseFontSize + 2,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            widget.user.firstName,
+                            style: TextStyle(
+                              color: const Color(0xFF1E293B),
+                              fontSize: baseFontSize,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    const Spacer(),
+                    Row(
                       children: [
-                        Icon(Icons.person,
-                            color: Colors.teal.shade600,
-                            size: baseFontSize + 2),
-                        const SizedBox(width: 8),
-                        Text(
-                          widget.user.firstName,
-                          style: TextStyle(
-                            color: Colors.teal.shade700,
-                            fontSize: baseFontSize,
-                            fontWeight: FontWeight.w600,
+                        Container(
+                          height: isDesktop ? 48 : 44,
+                          decoration: BoxDecoration(
+                            gradient: (_selectedTableName != null &&
+                                !(_tableOccupiedStatus[_selectedTableId] ??
+                                    false))
+                                ? LinearGradient(
+                              colors: [
+                                Color(0xFF10B981),
+                                Color(0xFF059669)
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            )
+                                : LinearGradient(
+                              colors: [
+                                Color(0xFF6B7280),
+                                Color(0xFF4B5563)
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: ((_selectedTableName != null &&
+                                    !(_tableOccupiedStatus[_selectedTableId] ??
+                                        false))
+                                    ? const Color(0xFF10B981)
+                                    : const Color(0xFF6B7280))
+                                    .withOpacity(0.3),
+                                offset: const Offset(0, 4),
+                                blurRadius: 12,
+                                spreadRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton.icon(
+                            icon: Icon(Icons.add_circle_outline_rounded,
+                                size: baseFontSize + 3),
+                            label: Padding(
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                _selectedTableName != null
+                                    ? "Yangi hisob : ${_selectedTableName} - Stol"
+                                    : "Yangi hisob",
+                                style: TextStyle(
+                                  fontSize: baseFontSize - 1,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              if (_selectedTableId != null) {
+                                bool isOccupied =
+                                    _tableOccupiedStatus[_selectedTableId] ??
+                                        false;
+                                if (isOccupied) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Row(
+                                        children: [
+                                          Icon(Icons.warning_rounded,
+                                              color: Colors.white),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                              '$_selectedTableName band! Yangi hisob ochib bo\'lmaydi.'),
+                                        ],
+                                      ),
+                                      backgroundColor: Colors.red.shade600,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                          BorderRadius.circular(12)),
+                                    ),
+                                  );
+                                } else {
+                                  _showOrderScreenDialog(_selectedTableId!);
+                                }
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text(
+                                        'Avval stolni tanlang!'),
+                                    backgroundColor: Colors.orange.shade600,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                        BorderRadius.circular(12)),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Container(
+                          height: isDesktop ? 48 : 44,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                offset: const Offset(0, 4),
+                                blurRadius: 12,
+                                spreadRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton.icon(
+                            icon: Icon(Icons.check_circle_outline_rounded,
+                                size: baseFontSize + 3),
+                            label: Padding(
+                              padding:
+                              const EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                "Yopilgan hisoblar",
+                                style: TextStyle(
+                                  fontSize: baseFontSize - 1,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => OrderDetailsPage(
+                                    waiterName: widget.user.firstName,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const Spacer(),
-                  // Action buttons
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: isDesktop ? 200 : (isTablet ? 180 : 160),
-                        height: isDesktop ? 42 : 38,
-                        child: ElevatedButton.icon(
-                          icon: Icon(Icons.add_circle_outline,
-                              size: baseFontSize + 2),
-                          label: Text(
-                            _selectedTableName != null
-                                ? "Yangi hisob (${_selectedTableName})"
-                                : "Yangi hisob",
-                            style: TextStyle(fontSize: baseFontSize - 1),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _selectedTableName != null
-                                ? Colors.teal.shade600
-                                : Colors.teal,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)
-                            ),
-                            elevation: _selectedTableName != null ? 4 : 2,
-                          ),
-                          onPressed: () {
-                            if (_selectedTableId != null) {
-                              _showOrderScreenDialog(_selectedTableId!);
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Avval stolni tanlang!'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: isDesktop ? 180 : (isTablet ? 160 : 140),
-                        height: isDesktop ? 42 : 38,
-                        child: ElevatedButton.icon(
-                          icon: Icon(Icons.check_circle_outline,
-                              size: baseFontSize + 2),
-                          label: Text(
-                            "Yopilgan hisoblar",
-                            style: TextStyle(fontSize: baseFontSize - 1),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)
-                            ),
-                          ),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => OrderDetailsPage(
-                                  waiterName: widget.user.firstName,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        )
+        ),
       ),
       body: Center(
         child: Container(
           width: maxWidth,
-          height: screenHeight - (isDesktop ? 70 : 60),
+          height: screenHeight - (isDesktop ? 75 : 65),
           child: Row(
             children: [
-              // Tables section
               Expanded(
-                flex: isDesktop ? 2 : 3,
+                flex: isDesktop ? 3 : 3,
                 child: Container(
-                  margin: EdgeInsets.all(isDesktop ? 16 : 8),
+                  margin: EdgeInsets.all(isDesktop ? 20 : 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withOpacity(0.06),
+                        offset: const Offset(0, 4),
+                        blurRadius: 16,
+                        spreadRadius: 0,
                       ),
                     ],
                   ),
                   child: _buildTablesGrid(baseFontSize, isDesktop, isTablet),
                 ),
               ),
-              // Orders section
               Expanded(
                 flex: isDesktop ? 2 : 2,
                 child: Container(
                   margin: EdgeInsets.only(
-                    top: isDesktop ? 16 : 8,
-                    bottom: isDesktop ? 16 : 8,
-                    right: isDesktop ? 16 : 8,
+                    top: isDesktop ? 20 : 12,
+                    bottom: isDesktop ? 20 : 12,
+                    right: isDesktop ? 20 : 12,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withOpacity(0.06),
+                        offset: const Offset(0, 4),
+                        blurRadius: 16,
+                        spreadRadius: 0,
                       ),
                     ],
                   ),
@@ -450,94 +708,171 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  final StolController stolControler = StolController();
-
   Widget _buildTablesGrid(double fontSize, bool isDesktop, bool isTablet) {
     return Padding(
-      padding: EdgeInsets.all(isDesktop ? 20 : 16),
+      padding: EdgeInsets.all(isDesktop ? 24 : 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.table_restaurant,
-                  color: Colors.teal.shade600,
-                  size: fontSize + 4),
-              const SizedBox(width: 8),
-              Text(
-                'Stollar',
-                style: TextStyle(
-                  fontSize: fontSize + 2,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade800,
-                ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF3B82F6).withOpacity(0.1),
+                  const Color(0xFF1D4ED8).withOpacity(0.1),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: FutureBuilder<List<StolModel>>(
-              future: stolControler.fetchTables(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(child: Text("Xatolik: ${snapshot.error}"));
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text("Hech qanday stol topilmadi."));
-                }
-
-                final List<StolModel> tables = snapshot.data!;
-                int crossAxisCount = isDesktop ? 3 : (isTablet ? 2 : 2);
-
-                return GridView.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    childAspectRatio: isDesktop ? 1.3 : 1.2,
-                    crossAxisSpacing: isDesktop ? 16 : 12,
-                    mainAxisSpacing: isDesktop ? 16 : 12,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.table_restaurant_rounded,
+                    color: const Color(0xFF1D4ED8), size: fontSize + 4),
+                const SizedBox(width: 12),
+                Text(
+                  'Stollar (Real-time)',
+                  style: TextStyle(
+                    fontSize: fontSize + 2,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E293B),
                   ),
-                  itemCount: tables.length,
-                  itemBuilder: (_, index) {
-                    final table = tables[index];
-                    final isSelected = _selectedTableId == table.id;
-
-                    return GestureDetector(
-                      onTap: () {
-                        if (_selectedTableId == table.id) {
-                          _showOrderScreenDialog(table.id);
-                        } else {
-                          _handleTableTap(table.name, table.id);
-                        }
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
                         decoration: BoxDecoration(
-                          color: isSelected
-                              ? Colors.teal.shade50
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? Colors.teal.shade400
-                                : Colors.grey.shade300,
-                            width: isSelected ? 2 : 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isSelected
-                                  ? Colors.teal.withOpacity(0.2)
-                                  : Colors.grey.withOpacity(0.1),
-                              spreadRadius: isSelected ? 2 : 1,
-                              blurRadius: isSelected ? 8 : 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+                          color: Colors.green.shade600,
+                          shape: BoxShape.circle,
                         ),
-                        child: _buildTableCard(table, fontSize, isSelected),
                       ),
-                    );
+                      const SizedBox(width: 6),
+                      Text(
+                        'Jonli',
+                        style: TextStyle(
+                          fontSize: fontSize - 3,
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: _isLoadingTables
+                ? Center(
+              child: CircularProgressIndicator(
+                color: const Color(0xFF3B82F6),
+                strokeWidth: 3,
+              ),
+            )
+                : _tables.isEmpty
+                ? Center(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: const Text("Hech qanday stol topilmadi."),
+              ),
+            )
+                : GridView.builder(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
+                childAspectRatio: isDesktop ? 1.1 : 1.0,
+                crossAxisSpacing: isDesktop ? 20 : 14,
+                mainAxisSpacing: isDesktop ? 20 : 14,
+              ),
+              itemCount: _tables.length,
+              itemBuilder: (_, index) {
+                final table = _tables[index];
+                final isSelected = _selectedTableId == table.id;
+                final isOccupied = _tableOccupiedStatus[table.id] ?? false;
+
+                return GestureDetector(
+                  onTap: () {
+                    if (_selectedTableId == table.id && !isOccupied) {
+                      _showOrderScreenDialog(table.id);
+                    } else {
+                      _handleTableTap(table.name, table.id);
+                    }
                   },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    decoration: BoxDecoration(
+                      gradient: isOccupied
+                          ? LinearGradient(
+                        colors: [
+                          Colors.red.shade100,
+                          Colors.red.shade200,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                          : isSelected
+                          ? LinearGradient(
+                        colors: [
+                          const Color(0xFF3B82F6)
+                              .withOpacity(0.15),
+                          const Color(0xFF1D4ED8)
+                              .withOpacity(0.15),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                          : LinearGradient(
+                        colors: [
+                          Colors.grey.shade50,
+                          Colors.grey.shade100,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: isOccupied
+                            ? Colors.red.shade400
+                            : isSelected
+                            ? const Color(0xFF3B82F6)
+                            : Colors.grey.shade300,
+                        width: isOccupied || isSelected ? 2.5 : 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isOccupied
+                              ? Colors.red.withOpacity(0.25)
+                              : isSelected
+                              ? const Color(0xFF3B82F6)
+                              .withOpacity(0.25)
+                              : Colors.grey.withOpacity(0.1),
+                          offset: Offset(
+                              0, isOccupied || isSelected ? 6 : 3),
+                          blurRadius: isOccupied || isSelected ? 16 : 8,
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: _buildTableCard(
+                        table, fontSize, isSelected, isOccupied),
+                  ),
                 );
               },
             ),
@@ -547,52 +882,128 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  Widget _buildTableCard(StolModel table, double fontSize, bool isSelected) {
+  Widget _buildTableCard(
+      StolModel table, double fontSize, bool isSelected, bool isOccupied) {
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? Colors.teal.shade100
-                  : Colors.grey.shade100,
-              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: isOccupied
+                    ? [Colors.red.shade400, Colors.red.shade600]
+                    : isSelected
+                    ? [
+                  const Color(0xFF3B82F6),
+                  const Color(0xFF1D4ED8)
+                ]
+                    : [Colors.grey.shade300, Colors.grey.shade400],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: isOccupied
+                      ? Colors.red.withOpacity(0.3)
+                      : isSelected
+                      ? const Color(0xFF3B82F6).withOpacity(0.3)
+                      : Colors.grey.withOpacity(0.2),
+                  offset: const Offset(0, 3),
+                  blurRadius: 6,
+                  spreadRadius: 0,
+                ),
+              ],
             ),
-            child: Icon(
-              Icons.table_bar,
-              size: fontSize + 8,
-              color: isSelected
-                  ? Colors.teal.shade600
-                  : Colors.grey.shade600,
+            child: Stack(
+              children: [
+                Icon(
+                  Icons.table_bar_rounded,
+                  size: fontSize + 8,
+                  color: Colors.white,
+                ),
+                if (isOccupied)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: fontSize - 3,
+                        color: Colors.red.shade600,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
           Text(
             "Stol ${table.number}",
             style: TextStyle(
-              fontSize: fontSize,
+              fontSize: fontSize - 1,
               fontWeight: FontWeight.bold,
-              color: isSelected
-                  ? Colors.teal.shade700
-                  : Colors.grey.shade800,
+              color: isOccupied
+                  ? Colors.red.shade700
+                  : isSelected
+                  ? const Color(0xFF1D4ED8)
+                  : const Color(0xFF1E293B),
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            "Holati: ${table.status}",
-            style: TextStyle(
-              fontSize: fontSize - 2,
-              color: Colors.grey.shade600,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: isOccupied ? Colors.red.shade100 : Colors.green.shade100,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color:
+                isOccupied ? Colors.red.shade300 : Colors.green.shade300,
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: isOccupied
+                        ? Colors.red.shade600
+                        : Colors.green.shade600,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  isOccupied ? "Band" : "Bo'sh",
+                  style: TextStyle(
+                    fontSize: fontSize - 4,
+                    color: isOccupied
+                        ? Colors.red.shade700
+                        : Colors.green.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
+          const SizedBox(height: 3),
           Text(
             "Sig'im: ${table.capacity}",
             style: TextStyle(
-              fontSize: fontSize - 2,
+              fontSize: fontSize - 3,
               color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -608,10 +1019,17 @@ class _PosScreenState extends State<PosScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.point_of_sale_rounded,
-              size: fontSize * 4,
-              color: Colors.grey.shade400,
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.point_of_sale_rounded,
+                size: fontSize * 3.5,
+                color: const Color(0xFF8B5CF6),
+              ),
             ),
             const SizedBox(height: 16),
             Text(
@@ -619,7 +1037,8 @@ class _PosScreenState extends State<PosScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: fontSize,
-                color: Colors.grey.shade600,
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -628,43 +1047,111 @@ class _PosScreenState extends State<PosScreen> {
           : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.receipt_long,
-                  color: Colors.teal.shade600,
-                  size: fontSize + 4),
-              const SizedBox(width: 8),
-              Text(
-                "Stol $_selectedTableName - Zakazlar",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: fontSize + 2,
-                  color: Colors.grey.shade800,
-                ),
+          Container(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF8B5CF6).withOpacity(0.1),
+                  const Color(0xFF7C3AED).withOpacity(0.1),
+                ],
               ),
-            ],
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.receipt_long_rounded,
+                    color: const Color(0xFF7C3AED), size: fontSize + 4),
+                const SizedBox(width: 12),
+                Text(
+                  "Stol $_selectedTableName - Zakazlar",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: fontSize + 1,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (_tableOccupiedStatus[_selectedTableId] ?? false)
+                        ? Colors.red.shade100
+                        : Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: (_tableOccupiedStatus[_selectedTableId] ??
+                              false)
+                              ? Colors.red.shade600
+                              : Colors.green.shade600,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        (_tableOccupiedStatus[_selectedTableId] ?? false)
+                            ? 'Band'
+                            : 'Bo\'sh',
+                        style: TextStyle(
+                          fontSize: fontSize - 3,
+                          color: (_tableOccupiedStatus[_selectedTableId] ??
+                              false)
+                              ? Colors.red.shade700
+                              : Colors.green.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           Expanded(
             child: _isLoadingOrders
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(
+              child: CircularProgressIndicator(
+                color: const Color(0xFF8B5CF6),
+                strokeWidth: 3,
+              ),
+            )
                 : _selectedTableOrders.isEmpty
                 ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.receipt_long,
-                    size: fontSize * 3,
-                    color: Colors.grey.shade400,
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.receipt_long_rounded,
+                      size: fontSize * 2.5,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Text(
                     "Bu stolda hech qanday\nzakaz topilmadi",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: fontSize,
-                      color: Colors.grey.shade600,
+                      fontSize: fontSize - 1,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -677,19 +1164,28 @@ class _PosScreenState extends State<PosScreen> {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white,
+                        const Color(0xFFF8FAFC),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border:
+                    Border.all(color: Colors.grey.shade200),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 4,
+                        color: Colors.black.withOpacity(0.04),
                         offset: const Offset(0, 2),
+                        blurRadius: 8,
+                        spreadRadius: 0,
                       ),
                     ],
                   ),
-                  child: _buildOrderCard(order, index, fontSize, isDesktop),
+                  child: _buildOrderCard(
+                      order, index, fontSize, isDesktop),
                 );
               },
             ),
@@ -699,7 +1195,10 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  Widget _buildOrderCard(Order order, int index, double fontSize, bool isDesktop) {
+  Widget _buildOrderCard(
+      Order order, int index, double fontSize, bool isDesktop) {
+    final isOwnOrder = order.userId == widget.user.id;
+
     return Padding(
       padding: EdgeInsets.all(isDesktop ? 16 : 12),
       child: Column(
@@ -708,119 +1207,323 @@ class _PosScreenState extends State<PosScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Zakaz #${index + 1}",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: fontSize,
-                  color: Colors.teal.shade700,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF3B82F6).withOpacity(0.1),
+                      const Color(0xFF1D4ED8).withOpacity(0.1),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: const Color(0xFF3B82F6).withOpacity(0.2)),
+                ),
+                child: Text(
+                  "Zakaz #${index + 1}",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: fontSize,
+                    color: const Color(0xFF1D4ED8),
+                  ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade100,
+                  gradient: LinearGradient(
+                    colors: [Colors.amber.shade200, Colors.amber.shade300],
+                  ),
                   borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Kutilmoqda',
-                  style: TextStyle(
-                    fontSize: fontSize - 2,
-                    color: Colors.orange.shade700,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildInfoRow(Icons.person, 'Hodim:', order.firstName, fontSize),
-          const SizedBox(height: 4),
-          _buildInfoRow(Icons.access_time, 'Vaqt:',
-              _formatDateTime(order.createdAt), fontSize),
-          const SizedBox(height: 8),
-          Text(
-            "Mahsulotlar:",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: fontSize - 1,
-              color: Colors.grey.shade700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          ...order.items.map((item) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.teal.shade400,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    "${item.name ?? 'Noma\'lum mahsulot'} x${item.quantity}",
-                    style: TextStyle(
-                      fontSize: fontSize - 2,
-                      color: Colors.grey.shade600,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withOpacity(0.3),
+                      offset: const Offset(0, 2),
+                      blurRadius: 4,
+                      spreadRadius: 0,
                     ),
-                  ),
+                  ],
                 ),
-                if (item.price != null)
-                  Text(
-                    "${NumberFormat('#,##0', 'uz').format(item.price! * item.quantity)} so'm",
-                    style: TextStyle(
-                      fontSize: fontSize - 2,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade700,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: fontSize - 2,
+                      color: Colors.amber.shade800,
                     ),
-                  ),
-              ],
-            ),
-          )),
-          const Divider(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Jami:",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: fontSize,
-                ),
-              ),
-              Text(
-                "${NumberFormat('#,##0', 'uz').format(order.totalPrice)} so'm",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: fontSize,
-                  color: Colors.teal.shade700,
+                    const SizedBox(width: 4),
+                    Text(
+                      'Kutilmoqda',
+                      style: TextStyle(
+                        fontSize: fontSize - 2,
+                        color: Colors.amber.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
+          if (isOwnOrder) ...[
+            _buildInfoRow(
+                Icons.person_rounded, 'Hodim:', order.firstName, fontSize),
+            const SizedBox(height: 6),
+            _buildInfoRow(Icons.access_time_rounded, 'Vaqt:',
+                _formatDateTime(order.createdAt), fontSize),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.restaurant_menu_rounded,
+                    size: fontSize,
+                    color: const Color(0xFF7C3AED),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Mahsulotlar:",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: fontSize - 1,
+                      color: const Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...order.items.map((item) => Container(
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF3B82F6),
+                          const Color(0xFF1D4ED8)
+                        ],
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "${item.name ?? 'Noma\'lum mahsulot'} x${item.quantity}",
+                      style: TextStyle(
+                        fontSize: fontSize - 2,
+                        color: const Color(0xFF1E293B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (item.price != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        "${NumberFormat('#,##0', 'uz').format(item.price! * item.quantity)} so'm",
+                        style: TextStyle(
+                          fontSize: fontSize - 2,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF059669),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            )),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF10B981).withOpacity(0.1),
+                    const Color(0xFF059669).withOpacity(0.1),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                Border.all(color: const Color(0xFF10B981).withOpacity(0.3)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.payments_rounded,
+                        color: const Color(0xFF059669),
+                        size: fontSize,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Jami:",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: fontSize,
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    "${NumberFormat('#,##0', 'uz').format(order.totalPrice)} so'm",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: fontSize + 1,
+                      color: const Color(0xFF059669),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lock_rounded,
+                    size: fontSize,
+                    color: Colors.red.shade600,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Bu zakaz boshqa ofitsiantga tegishli",
+                      style: TextStyle(
+                        fontSize: fontSize - 1,
+                        color: Colors.red.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           SizedBox(
             width: double.infinity,
-            height: 36,
+            height: 44,
             child: order.isProcessing
-                ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton.icon(
-              onPressed: () => _closeOrder(order),
-              icon: Icon(Icons.check, size: fontSize),
-              label: Text(
-                "Yopish",
-                style: TextStyle(fontSize: fontSize - 1),
+                ? Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal.shade600,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: const Color(0xFF10B981),
+                  strokeWidth: 2,
+                ),
+              ),
+            )
+                : isOwnOrder
+                ? Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF10B981),
+                    const Color(0xFF059669)
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withOpacity(0.3),
+                    offset: const Offset(0, 4),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () => _closeOrder(order),
+                icon: Icon(Icons.check_circle_rounded,
+                    size: fontSize),
+                label: Text(
+                  "Yopish",
+                  style: TextStyle(
+                    fontSize: fontSize - 1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+            )
+                : Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.grey.shade400,
+                    Colors.grey.shade500
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ElevatedButton.icon(
+                onPressed: null,
+                icon: Icon(Icons.lock_rounded, size: fontSize),
+                label: Text(
+                  "Boshqa ofitsiant",
+                  style: TextStyle(
+                    fontSize: fontSize - 1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
                 ),
               ),
             ),
@@ -839,34 +1542,51 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
-  Widget _buildInfoRow(IconData icon, String key, String value, double fontSize) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.grey[600], size: fontSize),
-        const SizedBox(width: 6),
-        Text(
-          key,
-          style: TextStyle(
-              color: Colors.grey[700],
-              fontSize: fontSize - 2
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: fontSize - 2,
+  Widget _buildInfoRow(
+      IconData icon, String key, String value, double fontSize) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF64748B).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
             ),
-            overflow: TextOverflow.ellipsis,
+            child: Icon(icon, color: const Color(0xFF475569), size: fontSize - 1),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Text(
+            key,
+            style: TextStyle(
+              color: const Color(0xFF64748B),
+              fontSize: fontSize - 2,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: fontSize - 2,
+                color: const Color(0xFF1E293B),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
-
 class OrderScreenContent extends StatefulWidget {
   final User user;
   final String? tableId;
@@ -912,11 +1632,11 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       setState(() => _isLoading = true);
 
       final categories = await _categoryController.fetchCategories().timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 1),
       );
 
       final products = await _productController.fetchProducts().timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 1),
       );
 
       if (mounted) {
@@ -1348,145 +2068,150 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     final int quantityInCart = _getQuantityInCart(product);
     final double totalPrice = product.price * quantityInCart;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: quantityInCart > 0 ? Colors.teal.shade400 : Colors.grey.shade300,
-          width: quantityInCart > 0 ? 2 : 1,
+    return GestureDetector(
+      onTap: () => _addToCart(product),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: quantityInCart > 0 ? Colors.teal.shade400 : Colors.grey.shade300,
+            width: quantityInCart > 0 ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: quantityInCart > 0
+                  ? Colors.teal.withOpacity(0.2)
+                  : Colors.grey.withOpacity(0.1),
+              spreadRadius: quantityInCart > 0 ? 2 : 1,
+              blurRadius: quantityInCart > 0 ? 8 : 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: quantityInCart > 0
-                ? Colors.teal.withOpacity(0.2)
-                : Colors.grey.withOpacity(0.1),
-            spreadRadius: quantityInCart > 0 ? 2 : 1,
-            blurRadius: quantityInCart > 0 ? 8 : 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop ? 12 : 8,
-              vertical: isDesktop ? 10 : 8,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.teal.shade600,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(11),
-                topRight: Radius.circular(11),
-              ),
-            ),
-            child: Text(
-              '${_currencyFormatter.format(product.price)} soʻm',
-              style: TextStyle(
-                fontSize: fontSize - 1,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(isDesktop ? 12 : 8),
-              child: Text(
-                product.name,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-          if (quantityInCart > 0)
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Container(
               width: double.infinity,
               padding: EdgeInsets.symmetric(
                 horizontal: isDesktop ? 12 : 8,
-                vertical: 4,
+                vertical: isDesktop ? 10 : 8,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade600,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(11),
+                  topRight: Radius.circular(11),
+                ),
               ),
               child: Text(
-                'Jami: ${_currencyFormatter.format(totalPrice)} soʻm',
+                '${_currencyFormatter.format(product.price)} soʻm',
                 style: TextStyle(
-                  fontSize: fontSize - 3,
-                  color: Colors.teal.shade700,
-                  fontWeight: FontWeight.w600,
+                  fontSize: fontSize - 1,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(isDesktop ? 12 : 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (quantityInCart > 0) ...[
-                  GestureDetector(
-                    onTap: () => _updateQuantity(
-                      _cart.firstWhere((item) => item.product.id == product.id),
-                      -1,
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(isDesktop ? 12 : 8),
+                child: Text(
+                  product.name,
+                  style: TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            if (quantityInCart > 0)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isDesktop ? 12 : 8,
+                  vertical: 4,
+                ),
+                child: Text(
+                  'Jami: ${_currencyFormatter.format(totalPrice)} soʻm',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    color: Colors.teal.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(isDesktop ? 12 : 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (quantityInCart > 0) ...[
+                    GestureDetector(
+                      onTap: () {
+                        _updateQuantity(
+                          _cart.firstWhere((item) => item.product.id == product.id),
+                          -1,
+                        );
+                      },
+                      child: Container(
+                        width: isDesktop ? 32 : 28,
+                        height: isDesktop ? 32 : 28,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade100,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          Icons.remove,
+                          size: fontSize,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
                     ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Text(
+                        '$quantityInCart',
+                        style: TextStyle(
+                          fontSize: fontSize,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  GestureDetector(
+                    onTap: () => _addToCart(product),
                     child: Container(
                       width: isDesktop ? 32 : 28,
                       height: isDesktop ? 32 : 28,
                       decoration: BoxDecoration(
-                        color: Colors.red.shade100,
+                        color: Colors.teal.shade600,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Icon(
-                        Icons.remove,
+                        Icons.add,
                         size: fontSize,
-                        color: Colors.red.shade700,
+                        color: Colors.white,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Text(
-                      '$quantityInCart',
-                      style: TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal.shade700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                 ],
-                GestureDetector(
-                  onTap: () => _addToCart(product),
-                  child: Container(
-                    width: isDesktop ? 32 : 28,
-                    height: isDesktop ? 32 : 28,
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade600,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      Icons.add,
-                      size: fontSize,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1544,6 +2269,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       print("✅ Printer ip olish uchun ${response.body}");
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        print("✅ : ${response.body}");
         final Map<String, dynamic> responseData = jsonDecode(response.body);
 
         final String printerIP = responseData['printing']['results'][0]['printer_ip'] ?? '192.168.0.106';
@@ -1587,60 +2313,67 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
+
   Future<void> _printOrderDirectly(Map<String, dynamic> orderData, String printerIP) async {
     const int port = 9100;
 
     try {
-      StringBuffer receipt = StringBuffer();
-      String centerText(String text, int width) => text
-          .padLeft((width - text.length) ~/ 2 + text.length)
-          .padRight(width);
+      List<int> bytes = [];
 
-      receipt.writeln(centerText('--- Restoran Cheki ---', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Buyurtma: ${orderData['_id'] ?? '#001'}', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Stol: ${widget.tableName ?? 'N/A'}', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Hodim: ${widget.user.firstName}', 32));
-      receipt.writeln();
-      receipt.writeln(
-        centerText(
-          'Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}',
-          32,
-        ),
-      );
-      receipt.writeln();
-      receipt.writeln(centerText('--------------------', 32));
-      receipt.writeln();
-      receipt.writeln(centerText('Mahsulotlar:', 32));
-      receipt.writeln();
+      // ESC/POS commands
+      List<int> reset() => [0x1B, 0x40]; // Initialize
+      List<int> boldOn() => [0x1B, 0x45, 0x01];
+      List<int> boldOff() => [0x1B, 0x45, 0x00];
+      List<int> fontSize(int widthMultiplier, int heightMultiplier) => [0x1D, 0x21, (widthMultiplier - 1) << 4 | (heightMultiplier - 1)];
+      List<int> alignCenter() => [0x1B, 0x61, 0x01];
+      List<int> alignLeft() => [0x1B, 0x61, 0x00];
+      List<int> cut() => [0x1D, 0x56, 0x00];
 
+      bytes += reset();
+      bytes += alignCenter();
+      bytes += fontSize(2, 2);
+      bytes += boldOn();
+      bytes += _encodeText('--- Restoran Cheki ---\n\n');
+
+      bytes += fontSize(1, 1);
+      bytes += boldOff();
+      bytes += _encodeText('Buyurtma: ${orderData['_id'] ?? '#001'}\n');
+      bytes += _encodeText('Stol: ${widget.tableName ?? 'N/A'}\n');
+      bytes += _encodeText('Hodim: ${widget.user.firstName}\n');
+      bytes += _encodeText('Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}\n');
+      bytes += _encodeText('------------------------------\n');
+
+      bytes += boldOn();
+      bytes += _encodeText('Mahsulotlar:\n');
+      bytes += boldOff();
+
+      bytes += alignLeft();
       for (var item in _cart) {
         String name = item.product.name.length > 18
             ? item.product.name.substring(0, 18)
             : item.product.name;
         String quantity = '${item.quantity}x';
-        receipt.writeln('${name.padRight(18)}$quantity');
-        receipt.writeln();
+        String line = name.padRight(18) + quantity.padLeft(5);
+        bytes += _encodeText('$line\n');
       }
 
-      receipt.writeln(centerText('--------------------', 32));
-      receipt.writeln('\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n');
-      receipt.write('\x1D\x56\x00');
+      bytes += alignCenter();
+      bytes += _encodeText('------------------------------\n\n');
+      bytes += cut();
 
-      Socket socket = await Socket.connect(
-        printerIP,
-        port,
-        timeout: const Duration(seconds: 5),
-      );
-      socket.write(receipt.toString());
+      Socket socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 5));
+      socket.add(bytes);
       await socket.flush();
       socket.destroy();
     } catch (e) {
       print('Printer xatoligi: $e');
     }
   }
+
+  List<int> _encodeText(String text) {
+    return text.codeUnits;
+  }
+
 
   Widget _buildBottomActions(double fontSize, double padding, bool isDesktop) {
     final double total = _calculateTotal();

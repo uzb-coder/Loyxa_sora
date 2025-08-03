@@ -41,8 +41,8 @@ class User {
 
 class AuthService {
   static const String baseUrl = "https://sora-b.vercel.app/api";
-  static const String userCode = "9090034564";
-  static const String password = "0000";
+  static const String userCode = "123";
+  static const String password = "1";
 
   // Tokenni local storage (SharedPreferences) ga saqlash
   static Future<void> saveToken(String token) async {
