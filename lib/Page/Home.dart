@@ -103,20 +103,18 @@ class _PosScreenState extends State<PosScreen> {
   String? _selectedTableId;
   List<Order> _selectedTableOrders = [];
   bool _isLoadingOrders = false;
-  String? _token; // Store the token dynamically
+  String? _token;
 
   @override
   void initState() {
     super.initState();
-    _initializeToken(); // Fetch token on initialization
+    _initializeToken();
   }
 
   Future<void> _initializeToken() async {
     try {
-      // Check if token exists in SharedPreferences
       _token = await AuthService.getToken();
       if (_token == null) {
-        // If no token, perform login to get a new one
         await AuthService.loginAndPrintToken();
         _token = await AuthService.getToken();
       }
@@ -129,6 +127,7 @@ class _PosScreenState extends State<PosScreen> {
       print("❗ Token olishda xatolik: $e");
     }
   }
+
   void _handleTableTap(String tableName, String tableId) {
     setState(() {
       _selectedTableName = tableName;
@@ -163,8 +162,8 @@ class _PosScreenState extends State<PosScreen> {
           _selectedTableOrders = data
               .map((json) => Order.fromJson(json))
               .where((order) =>
-          order.userId == widget.user.id && // Filter by current user
-              order.status == 'pending') // Show only pending orders
+          order.userId == widget.user.id &&
+              order.status == 'pending')
               .toList();
           _isLoadingOrders = false;
         });
@@ -203,16 +202,18 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _closeOrder(Order order) async {
-    print("Closing order ID: ${order.id}, User ID: ${order.userId}, Current User: ${widget.user.id}");
-    if (order.userId != widget.user.id) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bu zakazni faqat uni yaratgan afitsant yopa oladi!'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+    print("Closing order ID: ${order.id}");
+
+    // Bu shartni olib tashladik - endi har qanday afitsant zakazni yopa oladi
+    // if (order.userId != widget.user.id) {
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(
+    //       content: Text('Bu zakazni faqat uni yaratgan afitsant yopa oladi!'),
+    //       backgroundColor: Colors.red,
+    //     ),
+    //   );
+    //   return;
+    // }
 
     try {
       setState(() {
@@ -247,122 +248,233 @@ class _PosScreenState extends State<PosScreen> {
   }
   @override
   Widget build(BuildContext context) {
-    final baseFontSize = MediaQuery.of(context).textScaler.scale(14.0);
-    final isMobile = MediaQuery.of(context).size.width < 600;
-    final isTablet = MediaQuery.of(context).size.width >= 600 && MediaQuery.of(context).size.width <= 1200;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isDesktop = screenWidth > 1200;
+    final isTablet = screenWidth >= 600 && screenWidth <= 1200;
+    final isMobile = screenWidth < 600;
+
+    // Desktop uchun maksimal kenglik
+    final maxWidth = isDesktop ? 1400.0 : screenWidth;
+    final baseFontSize = isDesktop ? 14.0 : (isTablet ? 16.0 : 14.0);
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 4,
-        title: Text(
-          "${widget.user.firstName}",
-          style: TextStyle(color: Colors.black87, fontSize: baseFontSize * 1.1),
-        ),
-        actions: [
-          SizedBox(
-            width: isMobile ? 180 : isTablet ? 200 : 220,
-            child: ElevatedButton.icon(
-              icon: Icon(Icons.add_circle_outline, size: baseFontSize * 1.5),
-              label: Text(
-                _selectedTableName != null
-                    ? "Yangi hisob (Stol $_selectedTableName)"
-                    : "Yangi hisob",
-                style: TextStyle(fontSize: baseFontSize * 1.1),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _selectedTableName != null ? Colors.teal.shade600 : Colors.teal,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(
-                  horizontal: baseFontSize * 0.5,
-                  vertical: baseFontSize * 0.9,
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: _selectedTableName != null ? 4 : 2,
-              ),
+      backgroundColor: Colors.grey.shade50,
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(isDesktop ? 70 : 60),
+        child:AppBar(
+          backgroundColor: Colors.white,
+          elevation: 2,
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: Colors.black),
+            onPressed: () {
+              Navigator.pop(context); // Bitta orqaga qaytadi
+            },
+          ),
+          actions: [
+            ElevatedButton(
               onPressed: () {
-                if (_selectedTableId != null) {
-                  _showOrderScreenDialog(_selectedTableId!);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Avval stolni tanlang!'),
-                      backgroundColor: Colors.orange,
+                Navigator.pop(context);
+              },
+              child: Icon(Icons.replay),
+            )
+          ],
+          flexibleSpace: Center(
+            child: Container(
+              width: maxWidth,
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop ? 24 : 16,
+                vertical: 8,
+              ),
+              child: Row(
+                children: [
+                  // User info
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.teal.shade200),
                     ),
-                  );
-                }
-              },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person,
+                            color: Colors.teal.shade600,
+                            size: baseFontSize + 2),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.user.firstName,
+                          style: TextStyle(
+                            color: Colors.teal.shade700,
+                            fontSize: baseFontSize,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  // Action buttons
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: isDesktop ? 200 : (isTablet ? 180 : 160),
+                        height: isDesktop ? 42 : 38,
+                        child: ElevatedButton.icon(
+                          icon: Icon(Icons.add_circle_outline,
+                              size: baseFontSize + 2),
+                          label: Text(
+                            _selectedTableName != null
+                                ? "Yangi hisob (${_selectedTableName})"
+                                : "Yangi hisob",
+                            style: TextStyle(fontSize: baseFontSize - 1),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _selectedTableName != null
+                                ? Colors.teal.shade600
+                                : Colors.teal,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)
+                            ),
+                            elevation: _selectedTableName != null ? 4 : 2,
+                          ),
+                          onPressed: () {
+                            if (_selectedTableId != null) {
+                              _showOrderScreenDialog(_selectedTableId!);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Avval stolni tanlang!'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: isDesktop ? 180 : (isTablet ? 160 : 140),
+                        height: isDesktop ? 42 : 38,
+                        child: ElevatedButton.icon(
+                          icon: Icon(Icons.check_circle_outline,
+                              size: baseFontSize + 2),
+                          label: Text(
+                            "Yopilgan hisoblar",
+                            style: TextStyle(fontSize: baseFontSize - 1),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.teal,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => OrderDetailsPage(
+                                  waiterName: widget.user.firstName,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-          SizedBox(width: baseFontSize * 0.5),
-          SizedBox(
-            width: isMobile ? 180 : isTablet ? 200 : 220,
-            child: ElevatedButton.icon(
-              icon: Icon(Icons.check_circle_outline, size: baseFontSize * 1.5),
-              label: Text(
-                "Yopilgan hisoblar",
-                style: TextStyle(fontSize: baseFontSize * 1.1),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(
-                  horizontal: baseFontSize * 1.5,
-                  vertical: baseFontSize * 0.9,
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: 2,
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => OrderDetailsPage(waiterName: widget.user.firstName,)),
-                );
-              },
-            ),
-          ),
-          SizedBox(width: baseFontSize * 0.5),
-        ],
+        )
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return Row(
+      body: Center(
+        child: Container(
+          width: maxWidth,
+          height: screenHeight - (isDesktop ? 70 : 60),
+          child: Row(
             children: [
+              // Tables section
               Expanded(
-                flex: 3,
-                child: _buildTablesGrid(baseFontSize, constraints),
+                flex: isDesktop ? 2 : 3,
+                child: Container(
+                  margin: EdgeInsets.all(isDesktop ? 16 : 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: _buildTablesGrid(baseFontSize, isDesktop, isTablet),
+                ),
               ),
+              // Orders section
               Expanded(
-                flex: 2,
-                child: _buildOrderDetails(baseFontSize, constraints),
+                flex: isDesktop ? 2 : 2,
+                child: Container(
+                  margin: EdgeInsets.only(
+                    top: isDesktop ? 16 : 8,
+                    bottom: isDesktop ? 16 : 8,
+                    right: isDesktop ? 16 : 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: _buildOrderDetails(baseFontSize, isDesktop, isTablet),
+                ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
   final StolController stolControler = StolController();
 
-  Widget _buildTablesGrid(double fontSize, BoxConstraints constraints) {
-    final width = constraints.maxWidth;
-    final isMobile = width < 600;
-    final isTablet = width >= 600 && width <= 1200;
-
+  Widget _buildTablesGrid(double fontSize, bool isDesktop, bool isTablet) {
     return Padding(
-      padding: EdgeInsets.all(fontSize * 0.5),
+      padding: EdgeInsets.all(isDesktop ? 20 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Stollar',
-            style: TextStyle(
-              fontSize: fontSize * 1.1,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Icon(Icons.table_restaurant,
+                  color: Colors.teal.shade600,
+                  size: fontSize + 4),
+              const SizedBox(width: 8),
+              Text(
+                'Stollar',
+                style: TextStyle(
+                  fontSize: fontSize + 2,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade800,
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: fontSize * 0.5),
+          const SizedBox(height: 16),
           Expanded(
             child: FutureBuilder<List<StolModel>>(
               future: stolControler.fetchTables(),
@@ -376,12 +488,14 @@ class _PosScreenState extends State<PosScreen> {
                 }
 
                 final List<StolModel> tables = snapshot.data!;
+                int crossAxisCount = isDesktop ? 3 : (isTablet ? 2 : 2);
+
                 return GridView.builder(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 1.5,
-                    crossAxisSpacing: fontSize * 1.5,
-                    mainAxisSpacing: fontSize * 1.5,
+                    crossAxisCount: crossAxisCount,
+                    childAspectRatio: isDesktop ? 1.3 : 1.2,
+                    crossAxisSpacing: isDesktop ? 16 : 12,
+                    mainAxisSpacing: isDesktop ? 16 : 12,
                   ),
                   itemCount: tables.length,
                   itemBuilder: (_, index) {
@@ -397,25 +511,30 @@ class _PosScreenState extends State<PosScreen> {
                         }
                       },
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
+                        duration: const Duration(milliseconds: 200),
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.greenAccent.withOpacity(0.3) : Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          color: isSelected
+                              ? Colors.teal.shade50
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isSelected ? Colors.green : Colors.grey,
-                            width: 2,
+                            color: isSelected
+                                ? Colors.teal.shade400
+                                : Colors.grey.shade300,
+                            width: isSelected ? 2 : 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.grey.withOpacity(0.2),
-                              spreadRadius: 2,
-                              blurRadius: 5,
-                              offset: const Offset(0, 3),
+                              color: isSelected
+                                  ? Colors.teal.withOpacity(0.2)
+                                  : Colors.grey.withOpacity(0.1),
+                              spreadRadius: isSelected ? 2 : 1,
+                              blurRadius: isSelected ? 8 : 4,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: _buildTableCard(table, fontSize, context),
+                        child: _buildTableCard(table, fontSize, isSelected),
                       ),
                     );
                   },
@@ -428,38 +547,62 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
-  Widget _buildTableCard(StolModel table, double fontSize, BuildContext context) {
+  Widget _buildTableCard(StolModel table, double fontSize, bool isSelected) {
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? Colors.teal.shade100
+                  : Colors.grey.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.table_bar,
+              size: fontSize + 8,
+              color: isSelected
+                  ? Colors.teal.shade600
+                  : Colors.grey.shade600,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
-            "Stol - ${table.number}",
-            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold),
+            "Stol ${table.number}",
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.bold,
+              color: isSelected
+                  ? Colors.teal.shade700
+                  : Colors.grey.shade800,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             "Holati: ${table.status}",
-            style: TextStyle(fontSize: fontSize * 0.8, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: fontSize - 2,
+              color: Colors.grey.shade600,
+            ),
           ),
-          const SizedBox(height: 4),
           Text(
             "Sig'im: ${table.capacity}",
-            style: TextStyle(fontSize: fontSize * 0.8, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: fontSize - 2,
+              color: Colors.grey.shade600,
+            ),
           ),
         ],
       ),
     );
   }
 
-  final Zakazcontroller zakazController = Zakazcontroller();
-
-  Widget _buildOrderDetails(double baseFontSize, BoxConstraints constraints) {
-    return Container(
-      color: Colors.grey[50],
-      padding: EdgeInsets.all(baseFontSize * 0.5),
+  Widget _buildOrderDetails(double fontSize, bool isDesktop, bool isTablet) {
+    return Padding(
+      padding: EdgeInsets.all(isDesktop ? 20 : 16),
       child: _selectedTableId == null
           ? Center(
         child: Column(
@@ -467,16 +610,16 @@ class _PosScreenState extends State<PosScreen> {
           children: [
             Icon(
               Icons.point_of_sale_rounded,
-              size: baseFontSize * 4,
-              color: Colors.grey,
+              size: fontSize * 4,
+              color: Colors.grey.shade400,
             ),
-            SizedBox(height: baseFontSize * 0.5),
+            const SizedBox(height: 16),
             Text(
               "Buyurtma ma'lumotlarini\nko'rish uchun stolni tanlang",
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: baseFontSize * 0.9,
-                color: Colors.grey,
+                fontSize: fontSize,
+                color: Colors.grey.shade600,
               ),
             ),
           ],
@@ -487,19 +630,21 @@ class _PosScreenState extends State<PosScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.table_bar_rounded, color: Colors.teal.shade600),
-              SizedBox(width: 8),
+              Icon(Icons.receipt_long,
+                  color: Colors.teal.shade600,
+                  size: fontSize + 4),
+              const SizedBox(width: 8),
               Text(
                 "Stol $_selectedTableName - Zakazlar",
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: baseFontSize * 1.2,
-                  color: Colors.teal.shade700,
+                  fontSize: fontSize + 2,
+                  color: Colors.grey.shade800,
                 ),
               ),
             ],
           ),
-          SizedBox(height: baseFontSize * 0.5),
+          const SizedBox(height: 16),
           Expanded(
             child: _isLoadingOrders
                 ? const Center(child: CircularProgressIndicator())
@@ -510,16 +655,16 @@ class _PosScreenState extends State<PosScreen> {
                 children: [
                   Icon(
                     Icons.receipt_long,
-                    size: baseFontSize * 3,
-                    color: Colors.grey,
+                    size: fontSize * 3,
+                    color: Colors.grey.shade400,
                   ),
-                  SizedBox(height: baseFontSize * 0.5),
+                  const SizedBox(height: 16),
                   Text(
                     "Bu stolda hech qanday\nzakaz topilmadi",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: baseFontSize * 0.9,
-                      color: Colors.grey,
+                      fontSize: fontSize,
+                      color: Colors.grey.shade600,
                     ),
                   ),
                 ],
@@ -529,162 +674,155 @@ class _PosScreenState extends State<PosScreen> {
               itemCount: _selectedTableOrders.length,
               itemBuilder: (context, index) {
                 final order = _selectedTableOrders[index];
-                return Card(
-                  elevation: 3,
-                  margin: EdgeInsets.only(bottom: baseFontSize * 0.5),
-                  shape: RoundedRectangleBorder(
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  child: Padding(
-                    padding: EdgeInsets.all(baseFontSize * 0.8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Zakaz #${index + 1}",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: baseFontSize * 1.0,
-                                color: Colors.teal.shade700,
-                              ),
-                            ),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Kutilmoqda',
-                                style: TextStyle(
-                                  fontSize: baseFontSize * 0.7,
-                                  color: Colors.orange.shade700,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: baseFontSize * 0.4),
-                        _buildInfoRow(
-                          Icons.person,
-                          'ID:',
-                          order.id,
-                          baseFontSize,
-                        ),
-                        SizedBox(height: baseFontSize * 0.4),
-                        _buildInfoRow(
-                          Icons.person,
-                          'Hodim:',
-                          order.firstName,
-                          baseFontSize,
-                        ),
-                        SizedBox(height: baseFontSize * 0.2),
-                        _buildInfoRow(
-                          Icons.access_time,
-                          'Vaqt:',
-                          _formatDateTime(order.createdAt),
-                          baseFontSize,
-                        ),
-                        SizedBox(height: baseFontSize * 0.4),
-                        Text(
-                          "Mahsulotlar:",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: baseFontSize * 0.9,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                        SizedBox(height: baseFontSize * 0.2),
-                        ...order.items.map((item) => Padding(
-                          padding: EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 4,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: Colors.teal.shade300,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  "${item.name ?? 'Noma\'lum mahsulot'} x${item.quantity}",
-                                  style: TextStyle(
-                                    fontSize: baseFontSize * 0.8,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ),
-                              if (item.price != null)
-                                Text(
-                                  "${NumberFormat('#,##0', 'uz').format(item.price! * item.quantity)} so'm",
-                                  style: TextStyle(
-                                    fontSize: baseFontSize * 0.8,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        )),
-                        Divider(height: baseFontSize * 1.2),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Jami:",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: baseFontSize * 1.0,
-                              ),
-                            ),
-                            Text(
-                              "${NumberFormat('#,##0', 'uz').format(order.totalPrice)} so'm",
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: baseFontSize * 1.0,
-                                color: Colors.teal.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: baseFontSize * 0.5),
-                        Row(
-                          children: [
-                            order.isProcessing == true
-                                ? const Center(child: CircularProgressIndicator())
-                                : ElevatedButton.icon(
-                              onPressed: () => _closeOrder(order),
-                              icon: Icon(Icons.check, size: baseFontSize * 0.9),
-                              label: Text(
-                                "Yopish",
-                                style: TextStyle(fontSize: baseFontSize * 0.8),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.teal.shade600,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(vertical: 8),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  child: _buildOrderCard(order, index, fontSize, isDesktop),
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderCard(Order order, int index, double fontSize, bool isDesktop) {
+    return Padding(
+      padding: EdgeInsets.all(isDesktop ? 16 : 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Zakaz #${index + 1}",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: fontSize,
+                  color: Colors.teal.shade700,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Kutilmoqda',
+                  style: TextStyle(
+                    fontSize: fontSize - 2,
+                    color: Colors.orange.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildInfoRow(Icons.person, 'Hodim:', order.firstName, fontSize),
+          const SizedBox(height: 4),
+          _buildInfoRow(Icons.access_time, 'Vaqt:',
+              _formatDateTime(order.createdAt), fontSize),
+          const SizedBox(height: 8),
+          Text(
+            "Mahsulotlar:",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: fontSize - 1,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ...order.items.map((item) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade400,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "${item.name ?? 'Noma\'lum mahsulot'} x${item.quantity}",
+                    style: TextStyle(
+                      fontSize: fontSize - 2,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+                if (item.price != null)
+                  Text(
+                    "${NumberFormat('#,##0', 'uz').format(item.price! * item.quantity)} so'm",
+                    style: TextStyle(
+                      fontSize: fontSize - 2,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+              ],
+            ),
+          )),
+          const Divider(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Jami:",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: fontSize,
+                ),
+              ),
+              Text(
+                "${NumberFormat('#,##0', 'uz').format(order.totalPrice)} so'm",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: fontSize,
+                  color: Colors.teal.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 36,
+            child: order.isProcessing
+                ? const Center(child: CircularProgressIndicator())
+                : ElevatedButton.icon(
+              onPressed: () => _closeOrder(order),
+              icon: Icon(Icons.check, size: fontSize),
+              label: Text(
+                "Yopish",
+                style: TextStyle(fontSize: fontSize - 1),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
             ),
           ),
         ],
@@ -704,19 +842,22 @@ class _PosScreenState extends State<PosScreen> {
   Widget _buildInfoRow(IconData icon, String key, String value, double fontSize) {
     return Row(
       children: [
-        Icon(icon, color: Colors.grey[600], size: fontSize * 1.0),
-        SizedBox(width: fontSize * 0.3),
+        Icon(icon, color: Colors.grey[600], size: fontSize),
+        const SizedBox(width: 6),
         Text(
           key,
-          style: TextStyle(color: Colors.grey[700], fontSize: fontSize * 0.8),
+          style: TextStyle(
+              color: Colors.grey[700],
+              fontSize: fontSize - 2
+          ),
         ),
-        SizedBox(width: fontSize * 0.3),
+        const SizedBox(width: 6),
         Expanded(
           child: Text(
             value,
             style: TextStyle(
               fontWeight: FontWeight.w500,
-              fontSize: fontSize * 0.8,
+              fontSize: fontSize - 2,
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -725,8 +866,6 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 }
-
-
 
 class OrderScreenContent extends StatefulWidget {
   final User user;
@@ -754,7 +893,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   List<Ovqat> _filteredProducts = [];
   bool _isLoading = true;
   String? _error;
-  String? _token; // Store the token dynamically
+  String? _token;
 
   final List<CartItem> _cart = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
@@ -767,7 +906,6 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     _loadData();
     _initializeToken();
   }
-
 
   Future<void> _loadData() async {
     try {
@@ -872,18 +1010,18 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final baseFontSize = screenWidth * 0.04;
-    final padding = (screenWidth * 0.04).clamp(12.0, 20.0);
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isDesktop = screenWidth > 1200;
+    final isTablet = screenWidth >= 600 && screenWidth <= 1200;
+
+    final maxWidth = isDesktop ? 1600.0 : screenWidth;
+    final baseFontSize = isDesktop ? 14.0 : (isTablet ? 16.0 : 14.0);
+    final padding = isDesktop ? 20.0 : 16.0;
 
     return Theme(
       data: Theme.of(context).copyWith(
         primaryColor: Colors.teal,
         scaffoldBackgroundColor: Colors.transparent,
-        textTheme: Theme.of(context).textTheme.apply(
-          fontSizeFactor: screenWidth * 0.003,
-          bodyColor: Colors.black87,
-          displayColor: Colors.black87,
-        ),
       ),
       child: Scaffold(
         body: Container(
@@ -895,29 +1033,34 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
             ),
           ),
           child: SafeArea(
-            child: Padding(
-              padding: EdgeInsets.all(padding),
-              child: Column(
-                children: [
-                  _buildAppBar(baseFontSize),
-                  SizedBox(height: padding * 0.5),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: screenWidth * 0.3,
-                          child: _buildCategoriesSection(baseFontSize, padding),
-                        ),
-                        SizedBox(width: padding),
-                        Expanded(
-                          child: _buildProductsSection(baseFontSize, padding, screenWidth),
-                        ),
-                      ],
+            child: Center(
+              child: Container(
+                width: maxWidth,
+                height: screenHeight,
+                padding: EdgeInsets.all(padding),
+                child: Column(
+                  children: [
+                    _buildAppBar(baseFontSize, isDesktop),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            width: isDesktop ? 280 : (isTablet ? 250 : 200),
+                            child: _buildCategoriesSection(baseFontSize, padding, isDesktop),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildProductsSection(baseFontSize, padding, isDesktop, isTablet),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  SizedBox(height: padding * 0.5),
-                  _buildBottomActions(baseFontSize, padding),
-                ],
+                    const SizedBox(height: 16),
+                    _buildBottomActions(baseFontSize, padding, isDesktop),
+                  ],
+                ),
               ),
             ),
           ),
@@ -926,155 +1069,270 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 
-  Widget _buildAppBar(double fontSize) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.shopping_cart, color: Colors.white, size: fontSize * 1.2),
-            SizedBox(width: fontSize * 0.5),
-            Text(
-              widget.tableId != null ? "Hodim: ${widget.user.firstName}" : "Yangi hisob",
-              style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-                shadows: const [
-                  Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1)),
+  Widget _buildAppBar(double fontSize, bool isDesktop) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isDesktop ? 24 : 16,
+        vertical: isDesktop ? 16 : 12,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.teal.shade600, Colors.teal.shade50],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.shopping_cart,
+                  color: Colors.teal.shade600,
+                  size: fontSize + 4,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.tableId != null ? "Yangi hisob" : "Yangi hisob",
+                    style: TextStyle(
+                      fontSize: fontSize + 2,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    "Hodim: ${widget.user.firstName}",
+                    style: TextStyle(
+                      fontSize: fontSize - 1,
+                      color: Colors.white70,
+                    ),
+                  ),
                 ],
               ),
+            ],
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.close,
+              size: fontSize + 6,
+              color: Colors.white70,
             ),
-          ],
-        ),
-        IconButton(
-          icon: Icon(Icons.close, size: fontSize * 1.4, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-          tooltip: 'Yopish',
-        ),
-      ],
+            onPressed: () => Navigator.of(context).pop(),
+            tooltip: 'Yopish',
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildCategoriesSection(double fontSize, double padding) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Kategoriyalar',
-          style: TextStyle(
-            fontSize: fontSize * 1.1,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            shadows: const [
-              Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1)),
-            ],
+  Widget _buildCategoriesSection(double fontSize, double padding, bool isDesktop) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        SizedBox(height: padding * 0.5),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator(color: Colors.white))
-              : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.white)))
-              : _categories.isEmpty
-              ? const Center(
-            child: Text('Kategoriyalar topilmadi', style: TextStyle(color: Colors.white)),
-          )
-              : ListView.builder(
-            itemCount: _categories.length,
-            itemBuilder: (context, index) {
-              final category = _categories[index];
-              return Padding(
-                padding: EdgeInsets.only(bottom: padding * 0.5),
-                child: _buildCategoryButton(category, fontSize, padding),
-              );
-            },
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(padding),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.category,
+                  color: Colors.teal.shade600,
+                  size: fontSize + 4,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Kategoriyalar',
+                  style: TextStyle(
+                    fontSize: fontSize + 2,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                ? Center(child: Text(_error!,
+                style: TextStyle(color: Colors.red, fontSize: fontSize)))
+                : _categories.isEmpty
+                ? Center(
+              child: Text(
+                'Kategoriyalar topilmadi',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: fontSize,
+                ),
+              ),
+            )
+                : ListView.builder(
+              padding: EdgeInsets.only(
+                left: padding,
+                right: padding,
+                bottom: padding,
+              ),
+              itemCount: _categories.length,
+              itemBuilder: (context, index) {
+                final category = _categories[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _buildCategoryButton(category, fontSize, isDesktop),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildProductsSection(double fontSize, double padding, double screenWidth) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Mahsulotlar',
-          style: TextStyle(
-            fontSize: fontSize * 1.1,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            shadows: const [
-              Shadow(color: Colors.black26, blurRadius: 2, offset: Offset(1, 1)),
-            ],
+  Widget _buildProductsSection(double fontSize, double padding, bool isDesktop, bool isTablet) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        SizedBox(height: padding * 0.5),
-        Expanded(
-          child: Container(
-            decoration: const BoxDecoration(color: Colors.transparent),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(padding),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.restaurant_menu,
+                  color: Colors.teal.shade600,
+                  size: fontSize + 4,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Mahsulotlar',
+                  style: TextStyle(
+                    fontSize: fontSize + 2,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
             child: Padding(
-              padding: EdgeInsets.all(padding * 0.5),
+              padding: EdgeInsets.only(
+                left: padding,
+                right: padding,
+                bottom: padding,
+              ),
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                  ? const Center(child: CircularProgressIndicator())
                   : _error != null
-                  ? Center(child: Text(_error!, style: const TextStyle(color: Colors.white)))
+                  ? Center(child: Text(_error!,
+                  style: TextStyle(color: Colors.red, fontSize: fontSize)))
                   : _filteredProducts.isEmpty
                   ? Center(
                 child: Text(
                   'Bu kategoriyada mahsulot yo\'q',
-                  style: TextStyle(fontSize: fontSize * 0.8, color: Colors.white),
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    color: Colors.grey.shade600,
+                  ),
                 ),
               )
                   : GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.8,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
+                  childAspectRatio: isDesktop ? 1.0 : 0.9,
+                  crossAxisSpacing: isDesktop ? 16 : 12,
+                  mainAxisSpacing: isDesktop ? 16 : 12,
                 ),
                 itemCount: _filteredProducts.length,
                 itemBuilder: (context, index) {
                   final product = _filteredProducts[index];
-                  return _buildProductCard(product, fontSize, padding);
+                  return _buildProductCard(product, fontSize, isDesktop);
                 },
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildCategoryButton(Category category, double fontSize, double padding) {
+  Widget _buildCategoryButton(Category category, double fontSize, bool isDesktop) {
     final bool isSelected = _selectedCategoryId == category.id;
     return SizedBox(
-      height: fontSize * 3,
+      height: isDesktop ? 50 : 45,
       child: ElevatedButton(
         onPressed: () => _selectCategory(category.id, category.title),
         style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected ? Colors.teal.shade700 : Colors.white,
+          backgroundColor: isSelected ? Colors.teal.shade600 : Colors.white,
           foregroundColor: isSelected ? Colors.white : Colors.teal.shade700,
           elevation: isSelected ? 4 : 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          padding: EdgeInsets.symmetric(horizontal: padding * 0.4, vertical: padding * 0.3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color: isSelected ? Colors.teal.shade600 : Colors.grey.shade300,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
             Icon(
               _getCategoryIcon(category.title),
-              size: fontSize * 0.9,
-              color: isSelected ? Colors.white : Colors.teal.shade700,
+              size: fontSize + 2,
+              color: isSelected ? Colors.white : Colors.teal.shade600,
             ),
-            SizedBox(width: padding * 0.3),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 category.title,
                 style: TextStyle(
-                  fontSize: fontSize * 0.85,
+                  fontSize: fontSize,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -1086,7 +1344,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 
-  Widget _buildProductCard(Ovqat product, double fontSize, double padding) {
+  Widget _buildProductCard(Ovqat product, double fontSize, bool isDesktop) {
     final int quantityInCart = _getQuantityInCart(product);
     final double totalPrice = product.price * quantityInCart;
 
@@ -1094,13 +1352,18 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.teal.shade300, width: 2),
+        border: Border.all(
+          color: quantityInCart > 0 ? Colors.teal.shade400 : Colors.grey.shade300,
+          width: quantityInCart > 0 ? 2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.teal.withOpacity(0.2),
-            spreadRadius: 2,
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+            color: quantityInCart > 0
+                ? Colors.teal.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
+            spreadRadius: quantityInCart > 0 ? 2 : 1,
+            blurRadius: quantityInCart > 0 ? 8 : 4,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1109,18 +1372,21 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         children: [
           Container(
             width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: padding * 0.5, vertical: padding * 0.4),
+            padding: EdgeInsets.symmetric(
+              horizontal: isDesktop ? 12 : 8,
+              vertical: isDesktop ? 10 : 8,
+            ),
             decoration: BoxDecoration(
               color: Colors.teal.shade600,
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(10),
-                topRight: Radius.circular(10),
+                topLeft: Radius.circular(11),
+                topRight: Radius.circular(11),
               ),
             ),
             child: Text(
               '${_currencyFormatter.format(product.price)} soʻm',
               style: TextStyle(
-                fontSize: fontSize * 0.9,
+                fontSize: fontSize - 1,
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
@@ -1130,11 +1396,11 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
           Expanded(
             child: Container(
               width: double.infinity,
-              padding: EdgeInsets.all(padding * 0.5),
+              padding: EdgeInsets.all(isDesktop ? 12 : 8),
               child: Text(
                 product.name,
                 style: TextStyle(
-                  fontSize: fontSize * 1.0,
+                  fontSize: fontSize,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
@@ -1147,11 +1413,14 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
           if (quantityInCart > 0)
             Container(
               width: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: padding * 0.5, vertical: padding * 0.2),
+              padding: EdgeInsets.symmetric(
+                horizontal: isDesktop ? 12 : 8,
+                vertical: 4,
+              ),
               child: Text(
                 'Jami: ${_currencyFormatter.format(totalPrice)} soʻm',
                 style: TextStyle(
-                  fontSize: fontSize * 0.6,
+                  fontSize: fontSize - 3,
                   color: Colors.teal.shade700,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1160,47 +1429,58 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
             ),
           Container(
             width: double.infinity,
-            padding: EdgeInsets.all(padding * 0.4),
+            padding: EdgeInsets.all(isDesktop ? 12 : 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (quantityInCart > 0)
+                if (quantityInCart > 0) ...[
                   GestureDetector(
                     onTap: () => _updateQuantity(
                       _cart.firstWhere((item) => item.product.id == product.id),
                       -1,
                     ),
                     child: Container(
-                      width: 36,
-                      height: 36,
+                      width: isDesktop ? 32 : 28,
+                      height: isDesktop ? 32 : 28,
                       decoration: BoxDecoration(
                         color: Colors.red.shade100,
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Icon(Icons.remove, size: fontSize * 0.8, color: Colors.red.shade700),
+                      child: Icon(
+                        Icons.remove,
+                        size: fontSize,
+                        color: Colors.red.shade700,
+                      ),
                     ),
                   ),
-                if (quantityInCart > 0) SizedBox(width: padding * 0.5),
-                if (quantityInCart > 0)
-                  Text(
-                    '$quantityInCart',
-                    style: TextStyle(
-                      fontSize: fontSize * 0.9,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal.shade700,
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      '$quantityInCart',
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade700,
+                      ),
                     ),
                   ),
-                if (quantityInCart > 0) SizedBox(width: padding * 0.5),
+                  const SizedBox(width: 8),
+                ],
                 GestureDetector(
                   onTap: () => _addToCart(product),
                   child: Container(
-                    width: 36,
-                    height: 36,
+                    width: isDesktop ? 32 : 28,
+                    height: isDesktop ? 32 : 28,
                     decoration: BoxDecoration(
                       color: Colors.teal.shade600,
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(Icons.add, size: fontSize * 0.8, color: Colors.white),
+                    child: Icon(
+                      Icons.add,
+                      size: fontSize,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
@@ -1229,6 +1509,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       print("❗ Token olishda xatolik: $e");
     }
   }
+
   Future<void> _createOrderAndPrint() async {
     if (_isSubmitting || _cart.isEmpty) return;
 
@@ -1265,15 +1546,12 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
 
-        // Printer IP ni olish
         final String printerIP = responseData['printing']['results'][0]['printer_ip'] ?? '192.168.0.106';
 
-        // Zakaz ID va boshqa ma’lumotlar
         final Map<String, dynamic> orderData = {
           '_id': responseData['order']['id'],
         };
 
-        // Printerga yuborish
         await _printOrderDirectly(orderData, printerIP);
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1364,507 +1642,88 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
-
-
-  Widget _buildBottomActions(double fontSize, double padding) {
+  Widget _buildBottomActions(double fontSize, double padding, bool isDesktop) {
     final double total = _calculateTotal();
     final bool isCartEmpty = _cart.isEmpty;
 
     return Container(
-      padding: EdgeInsets.all(padding * 0.5),
+      padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Colors.white.withOpacity(0.95),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
             spreadRadius: 1,
-            blurRadius: 6,
+            blurRadius: 8,
             offset: const Offset(0, -2),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (!isCartEmpty) ...[
-            Container(
-              padding: EdgeInsets.all(padding * 0.4),
-              decoration: BoxDecoration(
-                color: Colors.teal.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.teal.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.shopping_cart, color: Colors.teal.shade600, size: fontSize * 1.0),
-                  SizedBox(width: padding * 0.2),
-                  Text(
-                    '${_cart.length} xil mahsulot',
-                    style: TextStyle(
-                      fontSize: fontSize * 0.8,
-                      color: Colors.teal.shade700,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${_cart.fold(0, (sum, item) => sum + item.quantity)} dona',
-                    style: TextStyle(
-                      fontSize: fontSize * 0.8,
-                      color: Colors.teal.shade700,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: padding * 0.4),
-          ],
-          Container(
-            padding: EdgeInsets.all(padding * 0.1),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.teal.shade100, Colors.teal.shade50],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.teal.shade300, width: 1),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Umumiy summa:',
-                      style: TextStyle(
-                        fontSize: fontSize * 0.4,
-                        color: Colors.grey.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Text(
-                      '${_currencyFormatter.format(total)} soʻm',
-                      style: TextStyle(
-                        fontSize: fontSize * 1.0,
-                        color: Colors.teal.shade700,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: isDesktop ? 200 : 150),
+            child: OutlinedButton.icon(
+              onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+              icon: Icon(Icons.arrow_back, size: fontSize + 2),
+              label: Text(
+                'Bekor qilish',
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w600,
                 ),
-                if (!isCartEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade600,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.attach_money,
-                      color: Colors.white,
-                      size: fontSize * 1.3,
-                    ),
-                  ),
-              ],
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: isDesktop ? 12 : 10),
+                side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+                foregroundColor: Colors.grey.shade600,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)
+                ),
+              ),
             ),
           ),
-          SizedBox(height: padding * 0.5),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-                  icon: Icon(Icons.arrow_back, size: fontSize * 0.9),
-                  label: Text(
-                    'Bekor qilish',
-                    style: TextStyle(
-                      fontSize: fontSize * 0.8,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: padding * 0.6),
-                    side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                    foregroundColor: Colors.grey.shade600,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
+          const SizedBox(width: 16),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: isDesktop ? 300 : 250),
+            child: ElevatedButton.icon(
+              onPressed: (isCartEmpty || _isSubmitting) ? null : _createOrderAndPrint,
+              icon: _isSubmitting
+                  ? SizedBox(
+                width: fontSize + 2,
+                height: fontSize + 2,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+                  : Icon(Icons.restaurant_menu, size: fontSize + 2),
+              label: Text(
+                _isSubmitting
+                    ? 'Yuklanmoqda...'
+                    : 'Zakaz berish (${_currencyFormatter.format(total)} soʻm)',
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              SizedBox(width: padding * 0.6),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: (isCartEmpty || _isSubmitting) ? null : _createOrderAndPrint,
-                  icon: _isSubmitting
-                      ? SizedBox(
-                    width: fontSize,
-                    height: fontSize,
-                    child: const CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                      : Icon(Icons.restaurant_menu, size: fontSize * 1.0),
-                  label: Text(
-                    _isSubmitting ? 'Yuklanmoqda...' : 'Zakaz berish',
-                    style: TextStyle(
-                      fontSize: fontSize * 0.9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: (isCartEmpty || _isSubmitting)
-                        ? Colors.grey.shade300
-                        : Colors.teal.shade600,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: padding * 0.4),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    elevation: (isCartEmpty || _isSubmitting) ? 0 : 4,
-                    shadowColor: Colors.teal.shade200,
-                  ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: (isCartEmpty || _isSubmitting)
+                    ? Colors.grey.shade300
+                    : Colors.teal.shade600,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: isDesktop ? 12 : 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)
                 ),
+                elevation: (isCartEmpty || _isSubmitting) ? 0 : 4,
+                shadowColor: Colors.teal.shade200,
               ),
-            ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-
-
-class ZakazDetailPage extends StatefulWidget {
-  final String tableId;
-  final User user;
-  final List<CartItem> cartItems;
-  final double total;
-  final VoidCallback? onOrderCreated;
-
-  const ZakazDetailPage({
-    super.key,
-    required this.tableId,
-    required this.user,
-    required this.cartItems,
-    required this.total,
-    this.onOrderCreated,
-  });
-
-  @override
-  _ZakazDetailPageState createState() => _ZakazDetailPageState();
-}
-
-class _ZakazDetailPageState extends State<ZakazDetailPage> {
-  final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
-  String? _token; // Store the token dynamically
-  bool _isSubmitting = false;
-
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeToken(); // Fetch token on initialization
-  }
-
-  Future<void> _initializeToken() async {
-    try {
-      _token = await AuthService.getToken();
-      if (_token == null) {
-        await AuthService.loginAndPrintToken();
-        _token = await AuthService.getToken();
-      }
-      if (_token == null) {
-        print("❌ Token olishda xatolik: Token null bo'lib qoldi");
-      } else {
-        print("✅ Token muvaffaqiyatli olindi: $_token");
-      }
-    } catch (e) {
-      print("❗ Token olishda xatolik: $e");
-    }
-  }
-  Future<void> createOrder(BuildContext context) async {
-    if (_isSubmitting) return;
-
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    const String apiUrl = "https://sora-b.vercel.app/api/orders/create";
-
-    final List<Map<String, dynamic>> items = widget.cartItems.map((item) {
-      return {'food_id': item.product.id, 'quantity': item.quantity};
-    }).toList();
-
-    final body = jsonEncode({
-      'table_id': widget.tableId,
-      'user_id': widget.user.id,
-      'first_name': widget.user.firstName,
-      'items': items,
-      'total_price': widget.total,
-    });
-
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-        body: body,
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Zakaz muvaffaqiyatli yuborildi!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        if (widget.onOrderCreated != null) {
-          widget.onOrderCreated!();
-        }
-
-        Navigator.of(context).pop();
-        Navigator.of(context).pop();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Xatolik: ${response.statusCode} - ${response.body}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Xatolik: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      setState(() {
-        _isSubmitting = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Zakaz Tasdiqlash'),
-        backgroundColor: Colors.teal.shade600,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.teal.shade50, Colors.white],
-          ),
-        ),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.person, color: Colors.teal.shade600, size: 24),
-                            const SizedBox(width: 10),
-                            Text(
-                              'Hodim: ${widget.user.firstName} ${widget.user.lastName}',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.shopping_cart, color: Colors.teal.shade600, size: 24),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Zakaz mahsulotlari:',
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: widget.cartItems.length,
-                          separatorBuilder: (context, index) => const Divider(),
-                          itemBuilder: (context, index) {
-                            final item = widget.cartItems[index];
-                            return Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 50,
-                                    height: 50,
-                                    decoration: BoxDecoration(
-                                      color: Colors.teal.shade100,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(
-                                      Icons.restaurant,
-                                      color: Colors.teal.shade600,
-                                      size: 24,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 15),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.product.name,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${_currencyFormatter.format(item.product.price)} so\'m × ${item.quantity}',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.teal.shade50,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.teal.shade200),
-                                    ),
-                                    child: Text(
-                                      '${_currencyFormatter.format(item.product.price * item.quantity)} so\'m',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.teal.shade700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  color: Colors.teal.shade50,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Umumiy summa:',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '${_currencyFormatter.format(widget.total)} so\'m',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.teal.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.arrow_back),
-                        label: const Text('Orqaga'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          side: BorderSide(color: Colors.teal.shade600, width: 2),
-                          foregroundColor: Colors.teal.shade600,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton.icon(
-                        onPressed: _isSubmitting ? null : () => createOrder(context),
-                        icon: _isSubmitting
-                            ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                            : const Icon(Icons.check_circle),
-                        label: Text(_isSubmitting ? 'Yuklanmoqda...' : 'Zakazni tasdiqlash'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.teal.shade600,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          elevation: 4,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
