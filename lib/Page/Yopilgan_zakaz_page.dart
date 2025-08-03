@@ -1,11 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
-import '../Controller/TokenCOntroller.dart';
-
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthServices {
@@ -13,20 +8,17 @@ class AuthServices {
   static const String userCode = "9090034564";
   static const String password = "0000";
 
-  // Tokenni local storage (SharedPreferences) ga saqlash
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
     print("✅ Token localda saqlandi");
   }
 
-  // Local storage dan tokenni olish
   static Future<String?> getTokens() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token');
   }
 
-  // Login qilish va token olish
   static Future<void> loginAndPrintToken() async {
     final Uri loginUrl = Uri.parse('$baseUrl/auth/login');
 
@@ -36,10 +28,7 @@ class AuthServices {
       final response = await http.post(
         loginUrl,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_code': userCode,
-          'password': password,
-        }),
+        body: jsonEncode({'user_code': userCode, 'password': password}),
       );
 
       print("📥 Status Code: ${response.statusCode}");
@@ -51,7 +40,9 @@ class AuthServices {
         await saveToken(token);
         print("✅ Token muvaffaqiyatli olindi: $token");
       } else {
-        print("❌ Login xatolik. Status: ${response.statusCode}, Body: ${response.body}");
+        print(
+          "❌ Login xatolik. Status: ${response.statusCode}, Body: ${response.body}",
+        );
         throw Exception('Login xatolik: ${response.statusCode}');
       }
     } catch (e) {
@@ -65,26 +56,22 @@ class OrderService {
   final String baseUrl = "https://sora-b.vercel.app/api";
   String? _token;
 
-  // Initialize token
   Future<void> _initializeToken() async {
     try {
       _token = await AuthServices.getTokens();
       if (_token == null) {
-        await AuthService.loginAndPrintToken();
-        _token = await AuthService.getToken();
+        await AuthServices.loginAndPrintToken();
+        _token = await AuthServices.getTokens();
       }
       if (_token == null) {
         throw Exception('Token olishda xatolik: Token null bo\'lib qoldi');
       }
-      print("✅ Token muvaffaqiyatli olindi: $_token");
     } catch (e) {
-      print("❗ Token olishda xatolik: $e");
       throw Exception('Token olishda xatolik: $e');
     }
   }
 
   Future<List<dynamic>> getPendingPayments() async {
-    // Tokenni har safar yangilash
     await _initializeToken();
 
     if (_token == null) {
@@ -102,6 +89,7 @@ class OrderService {
       );
 
       if (response.statusCode == 200) {
+        print("✅ Json malumotlar ${response.body}");
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['pending_orders'] != null) {
           return List<dynamic>.from(data['pending_orders']);
@@ -117,6 +105,7 @@ class OrderService {
     }
   }
 }
+
 class MainPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -126,7 +115,7 @@ class MainPage extends StatelessWidget {
           'Ofitsiantlarni Tanlang',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 22,
+            fontSize: 30,
             color: Colors.white,
           ),
         ),
@@ -137,9 +126,7 @@ class MainPage extends StatelessWidget {
         actions: [
           IconButton(
             icon: Icon(Icons.refresh, color: Colors.white),
-            onPressed: () {
-              // Yangilash funksiyasini qo'shish mumkin
-            },
+            onPressed: () {},
           ),
         ],
       ),
@@ -162,14 +149,16 @@ class MainPage extends StatelessWidget {
     );
   }
 
-  Widget _buildWaiterButton(BuildContext context, String waiterName, IconData icon) {
+  Widget _buildWaiterButton(
+    BuildContext context,
+    String waiterName,
+    IconData icon,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Card(
         elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         child: ListTile(
           leading: CircleAvatar(
             backgroundColor: Colors.blueAccent.withOpacity(0.1),
@@ -211,7 +200,7 @@ class OrderDetailsPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              'Buyurtmalar: $waiterName',
+              'Ofitsiant : $waiterName',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 20,
@@ -225,39 +214,35 @@ class OrderDetailsPage extends StatelessWidget {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Text(
                     'Xizmat haqi: Yuklanmoqda...',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white70,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
                   );
-                } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                } else if (snapshot.hasError ||
+                    !snapshot.hasData ||
+                    snapshot.data!.isEmpty) {
                   return Text(
                     'Xizmat haqi: 0 so\'m',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white70,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.white70),
                   );
                 }
 
-                final filteredOrders = snapshot.data!
-                    .where((order) =>
-                    order['waiterName']
-                        .toString()
-                        .toLowerCase()
-                        .contains(waiterName.toLowerCase()))
-                    .toList();
+                final filteredOrders =
+                    snapshot.data!
+                        .where(
+                          (order) => order['waiterName']
+                              .toString()
+                              .toLowerCase()
+                              .contains(waiterName.toLowerCase()),
+                        )
+                        .toList();
                 final totalService = filteredOrders.fold<double>(
                   0,
-                      (sum, order) => sum + (order['serviceAmount'] as num).toDouble(),
+                  (sum, order) =>
+                      sum + (order['serviceAmount'] as num).toDouble(),
                 );
 
                 return Text(
-                  'Xizmat haqi: ${totalService.toStringAsFixed(0)} so\'m',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                  ),
+                  'Ummumiy xizmat haqi: ${totalService.toStringAsFixed(0)} so\'m',
+                  style: TextStyle(fontSize: 20, color: Colors.white70),
                 );
               },
             ),
@@ -270,14 +255,6 @@ class OrderDetailsPage extends StatelessWidget {
           icon: Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.filter_list, color: Colors.white),
-            onPressed: () {
-              // Filtrlash funksiyasini qo'shish mumkin
-            },
-          ),
-        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -319,9 +296,7 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(
-            child: CircularProgressIndicator(
-              color: Colors.blueAccent,
-            ),
+            child: CircularProgressIndicator(color: Colors.blueAccent),
           );
         } else if (snapshot.hasError) {
           return Center(
@@ -340,13 +315,15 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
         }
 
         final allOrders = snapshot.data!;
-        final filteredOrders = allOrders
-            .where((order) =>
-            order['waiterName']
-                .toString()
-                .toLowerCase()
-                .contains(widget.waiterName.toLowerCase()))
-            .toList();
+        final filteredOrders =
+            allOrders
+                .where(
+                  (order) => order['waiterName']
+                      .toString()
+                      .toLowerCase()
+                      .contains(widget.waiterName.toLowerCase()),
+                )
+                .toList();
 
         if (filteredOrders.isEmpty) {
           return Center(
@@ -357,8 +334,14 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
           );
         }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(12),
+        return GridView.builder(
+          padding: EdgeInsets.all(4),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4, // Four cards per row
+            crossAxisSpacing: 4,
+            mainAxisSpacing: 4,
+            childAspectRatio: 1.5, // Compact, less tall cards
+          ),
           itemCount: filteredOrders.length,
           itemBuilder: (context, index) {
             final order = filteredOrders[index];
@@ -371,39 +354,71 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
 
   Widget _buildOrderCard(dynamic order) {
     return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      elevation: 4,
-      child: Padding(
-        padding: EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.receipt, color: Colors.blueAccent, size: 20),
-                SizedBox(width: 6),
-                Text(
-                  'Buyurtma: ${order['orderNumber']}',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blueAccent,
-                  ),
-                ),
-              ],
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.blueAccent.withOpacity(0.05),
+              blurRadius: 4,
+              offset: Offset(0, 1),
             ),
-            SizedBox(height: 8),
-            _buildInfoRow(Icons.table_restaurant, 'Stol: ${order['tableNumber']}'),
-            _buildInfoRow(Icons.fastfood, 'Mahsulotlar: ${order['itemsCount']}'),
-            _buildInfoRow(Icons.monetization_on, 'Jami: ${order['subtotal']} so\'m'),
-            _buildInfoRow(Icons.room_service, 'Xizmat haqi: ${order['serviceAmount']} so\'m'),
-            _buildInfoRow(Icons.account_balance_wallet, 'Yakuniy jami: ${order['finalTotal']} so\'m'),
-            _buildInfoRow(Icons.check_circle, 'Holati: ${order['status']}', color: Colors.green),
-            SizedBox(height: 8),
           ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.receipt, color: Colors.blueAccent, size: 18),
+                  SizedBox(width: 2),
+                  Expanded(
+                    child: Text(
+                      '№ ${order['orderNumber']}',
+                      style: TextStyle(
+                        fontSize: 25,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueAccent,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              _buildInfoRow(
+                Icons.table_restaurant,
+                'Stol: ${order['tableNumber']}',
+              ),
+              _buildInfoRow(Icons.fastfood, 'Mahsulot: ${order['itemsCount']}'),
+              _buildInfoRow(
+                Icons.monetization_on,
+                'Jami: ${order['subtotal']}',
+              ),
+              _buildInfoRow(
+                Icons.room_service,
+                'Xizmat: ${order['serviceAmount']}',
+              ),
+              _buildInfoRow(
+                Icons.account_balance_wallet,
+                'Yakuniy: ${order['finalTotal']}',
+              ),
+              _buildInfoRow(
+                Icons.check_circle,
+                'Holati: ${order['status']}',
+                color: Colors.green,
+              ),    _buildInfoRow(
+                Icons.calendar_month,
+                'Sana: ${order['completedAt']}',
+                color: Colors.blue,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -411,16 +426,16 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
 
   Widget _buildInfoRow(IconData icon, String text, {Color? color}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         children: [
-          Icon(icon, color: color ?? Colors.grey.shade600, size: 18),
-          SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 14,
-              color: color ?? Colors.black87,
+          Icon(icon, color: color ?? Colors.grey.shade600, size: 16),
+          SizedBox(width: 2),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 18, color: color ?? Colors.black87),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
