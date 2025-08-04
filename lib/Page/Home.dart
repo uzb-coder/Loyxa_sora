@@ -1587,6 +1587,8 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 }
+
+
 class OrderScreenContent extends StatefulWidget {
   final User user;
   final String? tableId;
@@ -1605,486 +1607,276 @@ class OrderScreenContent extends StatefulWidget {
   State<OrderScreenContent> createState() => _OrderScreenContentState();
 }
 
-class _OrderScreenContentState extends State<OrderScreenContent> {
-  String? _selectedCategoryId;
-  String _selectedCategoryName = '';
-  List<Category> _categories = [];
-  List<Ovqat> _allProducts = [];
-  List<Ovqat> _filteredProducts = [];
-  bool _isLoading = true;
-  String? _error;
-  String? _token;
+  class _OrderScreenContentState extends State<OrderScreenContent> {
+    String? _selectedCategoryId;
+    String _selectedCategoryName = '';
+    List<Category> _categories = [];
+    List<Ovqat> _allProducts = [];
+    List<Ovqat> _filteredProducts = [];
+    bool _isLoading = true;
+    String? _error;
+    String? _token;
 
-  final List<CartItem> _cart = [];
-  final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
-  final CategoryaController _categoryController = CategoryaController();
-  final OvqatController _productController = OvqatController();
+    final List<CartItem> _cart = [];
+    final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
+    final CategoryaController _categoryController = CategoryaController();
+    final OvqatController _productController = OvqatController();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-    _initializeToken();
-  }
+    @override
+    void initState() {
+      super.initState();
+      _loadData();
+      _initializeToken();
+    }
 
-  Future<void> _loadData() async {
-    try {
-      setState(() => _isLoading = true);
+    Future<void> _loadData() async {
+      try {
+        setState(() => _isLoading = true);
 
-      final categories = await _categoryController.fetchCategories().timeout(
-        const Duration(seconds: 1),
-      );
+        final categories = await _categoryController.fetchCategories().timeout(
+          const Duration(seconds: 3),
+        );
 
-      final products = await _productController.fetchProducts().timeout(
-        const Duration(seconds: 1),
-      );
+        final products = await _productController.fetchProducts().timeout(
+          const Duration(seconds: 3),
+        );
 
-      if (mounted) {
-        setState(() {
-          _categories = categories;
-          _allProducts = products;
-          _isLoading = false;
+        if (mounted) {
+          setState(() {
+            _categories = categories;
+            _allProducts = products;
+            _isLoading = false;
 
-          if (categories.isNotEmpty) {
-            _selectedCategoryId = categories.first.id;
-            _selectedCategoryName = categories.first.title;
-            _filterProductsByCategory();
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _error = 'Ma\'lumotlarni yuklashda xatolik: $e';
-        });
+            if (categories.isNotEmpty) {
+              _selectedCategoryId = categories.first.id;
+              _selectedCategoryName = categories.first.title;
+              _filterProductsByCategory();
+            }
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _error = 'Ma\'lumotlarni yuklashda xatolik: $e';
+          });
+        }
       }
     }
-  }
 
-  void _filterProductsByCategory() {
-    setState(() {
-      _filteredProducts = _selectedCategoryId != null
-          ? _allProducts.where((product) => product.categoryId == _selectedCategoryId).toList()
-          : [];
-    });
-  }
+    void _filterProductsByCategory() {
+      setState(() {
+        _filteredProducts = _selectedCategoryId != null
+            ? _allProducts.where((product) => product.categoryId == _selectedCategoryId).toList()
+            : [];
+      });
+    }
 
-  void _selectCategory(String categoryId, String categoryName) {
-    setState(() {
-      _selectedCategoryId = categoryId;
-      _selectedCategoryName = categoryName;
-      _filterProductsByCategory();
-    });
-  }
+    void _selectCategory(String categoryId, String categoryName) {
+      setState(() {
+        _selectedCategoryId = categoryId;
+        _selectedCategoryName = categoryName;
+        _filterProductsByCategory();
+      });
+    }
 
-  void _addToCart(Ovqat product) {
-    setState(() {
-      final existingItem = _cart.firstWhere(
+    void _addToCart(Ovqat product) {
+      setState(() {
+        final existingItem = _cart.firstWhere(
+              (item) => item.product.id == product.id,
+          orElse: () => CartItem(product: product),
+        );
+        if (_cart.contains(existingItem)) {
+          existingItem.quantity++;
+        } else {
+          _cart.add(CartItem(product: product));
+        }
+      });
+    }
+
+    void _updateQuantity(CartItem cartItem, int change) {
+      setState(() {
+        cartItem.quantity += change;
+        if (cartItem.quantity <= 0) {
+          _cart.remove(cartItem);
+        }
+      });
+    }
+
+    double _calculateTotal() {
+      return _cart.fold(0, (total, item) => total + item.product.price * item.quantity);
+    }
+
+    int _getQuantityInCart(Ovqat product) {
+      return _cart
+          .firstWhere(
             (item) => item.product.id == product.id,
-        orElse: () => CartItem(product: product),
-      );
-      if (_cart.contains(existingItem)) {
-        existingItem.quantity++;
-      } else {
-        _cart.add(CartItem(product: product));
-      }
-    });
-  }
-
-  void _updateQuantity(CartItem cartItem, int change) {
-    setState(() {
-      cartItem.quantity += change;
-      if (cartItem.quantity <= 0) {
-        _cart.remove(cartItem);
-      }
-    });
-  }
-
-  double _calculateTotal() {
-    return _cart.fold(0, (total, item) => total + item.product.price * item.quantity);
-  }
-
-  int _getQuantityInCart(Ovqat product) {
-    return _cart
-        .firstWhere(
-          (item) => item.product.id == product.id,
-      orElse: () => CartItem(product: product, quantity: 0),
-    )
-        .quantity;
-  }
-
-  IconData _getCategoryIcon(String categoryName) {
-    switch (categoryName.toLowerCase()) {
-      case 'ichimliklar':
-        return Icons.local_bar;
-      case 'shirinliklar':
-        return Icons.bakery_dining;
-      case 'taomlar':
-        return Icons.dinner_dining;
-      default:
-        return Icons.restaurant;
+        orElse: () => CartItem(product: product, quantity: 0),
+      )
+          .quantity;
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isDesktop = screenWidth > 1200;
-    final isTablet = screenWidth >= 600 && screenWidth <= 1200;
+    IconData _getCategoryIcon(String categoryName) {
+      switch (categoryName.toLowerCase()) {
+        case 'ichimliklar':
+          return Icons.local_bar;
+        case 'shirinliklar':
+          return Icons.bakery_dining;
+        case 'taomlar':
+          return Icons.dinner_dining;
+        default:
+          return Icons.restaurant;
+      }
+    }
 
-    final maxWidth = isDesktop ? 1600.0 : screenWidth;
-    final baseFontSize = isDesktop ? 14.0 : (isTablet ? 16.0 : 14.0);
-    final padding = isDesktop ? 20.0 : 16.0;
+    @override
+    Widget build(BuildContext context) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      final screenHeight = MediaQuery.of(context).size.height;
+      final isDesktop = screenWidth > 1200;
+      final isTablet = screenWidth >= 600 && screenWidth <= 1200;
 
-    return Theme(
-      data: Theme.of(context).copyWith(
-        primaryColor: Colors.teal,
-        scaffoldBackgroundColor: Colors.transparent,
-      ),
-      child: Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.teal.shade600, Colors.teal.shade50],
+      final maxWidth = isDesktop ? 1600.0 : screenWidth;
+      final baseFontSize = isDesktop ? 14.0 : (isTablet ? 16.0 : 14.0);
+      final padding = isDesktop ? 20.0 : 16.0;
+
+      return Theme(
+        data: Theme.of(context).copyWith(
+          primaryColor: Colors.teal,
+          scaffoldBackgroundColor: Colors.transparent,
+        ),
+        child: Scaffold(
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.teal.shade600, Colors.teal.shade50],
+              ),
             ),
-          ),
-          child: SafeArea(
-            child: Center(
-              child: Container(
-                width: maxWidth,
-                height: screenHeight,
-                padding: EdgeInsets.all(padding),
-                child: Column(
-                  children: [
-                    _buildAppBar(baseFontSize, isDesktop),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            width: isDesktop ? 280 : (isTablet ? 250 : 200),
-                            child: _buildCategoriesSection(baseFontSize, padding, isDesktop),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildProductsSection(baseFontSize, padding, isDesktop, isTablet),
-                          ),
-                        ],
+            child: SafeArea(
+              child: Center(
+                child: Container(
+                  width: maxWidth,
+                  height: screenHeight,
+                  padding: EdgeInsets.all(padding),
+                  child: Column(
+                    children: [
+                      _buildAppBar(baseFontSize, isDesktop),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: isDesktop ? 280 : (isTablet ? 250 : 200),
+                              child: _buildCategoriesSection(baseFontSize, padding, isDesktop),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildProductsSection(baseFontSize, padding, isDesktop, isTablet),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildBottomActions(baseFontSize, padding, isDesktop),
-                  ],
+                      const SizedBox(height: 16),
+                      _buildBottomActions(baseFontSize, padding, isDesktop),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  Widget _buildAppBar(double fontSize, bool isDesktop) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isDesktop ? 24 : 16,
-        vertical: isDesktop ? 16 : 12,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.teal.shade600, Colors.teal.shade50],
+    Widget _buildAppBar(double fontSize, bool isDesktop) {
+      return Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: isDesktop ? 24 : 16,
+          vertical: isDesktop ? 16 : 12,
         ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.teal.shade600, Colors.teal.shade50],
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.teal.shade100,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.shopping_cart,
-                  color: Colors.teal.shade600,
-                  size: fontSize + 4,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.tableId != null ? "Yangi hisob" : "Yangi hisob",
-                    style: TextStyle(
-                      fontSize: fontSize + 2,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    "Hodim: ${widget.user.firstName}",
-                    style: TextStyle(
-                      fontSize: fontSize - 1,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.close,
-              size: fontSize + 6,
-              color: Colors.white70,
-            ),
-            onPressed: () => Navigator.of(context).pop(),
-            tooltip: 'Yopish',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoriesSection(double fontSize, double padding, bool isDesktop) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.all(padding),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.category,
-                  color: Colors.teal.shade600,
-                  size: fontSize + 4,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Kategoriyalar',
-                  style: TextStyle(
-                    fontSize: fontSize + 2,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? Center(child: Text(_error!,
-                style: TextStyle(color: Colors.red, fontSize: fontSize)))
-                : _categories.isEmpty
-                ? Center(
-              child: Text(
-                'Kategoriyalar topilmadi',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: fontSize,
-                ),
-              ),
-            )
-                : ListView.builder(
-              padding: EdgeInsets.only(
-                left: padding,
-                right: padding,
-                bottom: padding,
-              ),
-              itemCount: _categories.length,
-              itemBuilder: (context, index) {
-                final category = _categories[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildCategoryButton(category, fontSize, isDesktop),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProductsSection(double fontSize, double padding, bool isDesktop, bool isTablet) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: EdgeInsets.all(padding),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.restaurant_menu,
-                  color: Colors.teal.shade600,
-                  size: fontSize + 4,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Mahsulotlar',
-                  style: TextStyle(
-                    fontSize: fontSize + 2,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(
-                left: padding,
-                right: padding,
-                bottom: padding,
-              ),
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _error != null
-                  ? Center(child: Text(_error!,
-                  style: TextStyle(color: Colors.red, fontSize: fontSize)))
-                  : _filteredProducts.isEmpty
-                  ? Center(
-                child: Text(
-                  'Bu kategoriyada mahsulot yo\'q',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              )
-                  : GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
-                  childAspectRatio: isDesktop ? 1.0 : 0.9,
-                  crossAxisSpacing: isDesktop ? 16 : 12,
-                  mainAxisSpacing: isDesktop ? 16 : 12,
-                ),
-                itemCount: _filteredProducts.length,
-                itemBuilder: (context, index) {
-                  final product = _filteredProducts[index];
-                  return _buildProductCard(product, fontSize, isDesktop);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryButton(Category category, double fontSize, bool isDesktop) {
-    final bool isSelected = _selectedCategoryId == category.id;
-    return SizedBox(
-      height: isDesktop ? 50 : 45,
-      child: ElevatedButton(
-        onPressed: () => _selectCategory(category.id, category.title),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected ? Colors.teal.shade600 : Colors.white,
-          foregroundColor: isSelected ? Colors.white : Colors.teal.shade700,
-          elevation: isSelected ? 4 : 1,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: BorderSide(
-              color: isSelected ? Colors.teal.shade600 : Colors.grey.shade300,
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Icon(
-              _getCategoryIcon(category.title),
-              size: fontSize + 2,
-              color: isSelected ? Colors.white : Colors.teal.shade600,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                category.title,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-      ),
-    );
-  }
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.shopping_cart,
+                    color: Colors.teal.shade600,
+                    size: fontSize + 4,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.tableId != null ? "Yangi hisob" : "Yangi hisob",
+                      style: TextStyle(
+                        fontSize: fontSize + 2,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      "Hodim: ${widget.user.firstName}",
+                      style: TextStyle(
+                        fontSize: fontSize - 1,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.close,
+                size: fontSize + 6,
+                color: Colors.white70,
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+              tooltip: 'Yopish',
+            ),
+          ],
+        ),
+      );
+    }
 
-  Widget _buildProductCard(Ovqat product, double fontSize, bool isDesktop) {
-    final int quantityInCart = _getQuantityInCart(product);
-    final double totalPrice = product.price * quantityInCart;
-
-    return GestureDetector(
-      onTap: () => _addToCart(product),
-      child: Container(
+    Widget _buildCategoriesSection(double fontSize, double padding, bool isDesktop) {
+      return Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.white.withOpacity(0.95),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: quantityInCart > 0 ? Colors.teal.shade400 : Colors.grey.shade300,
-            width: quantityInCart > 0 ? 2 : 1,
-          ),
           boxShadow: [
             BoxShadow(
-              color: quantityInCart > 0
-                  ? Colors.teal.withOpacity(0.2)
-                  : Colors.grey.withOpacity(0.1),
-              spreadRadius: quantityInCart > 0 ? 2 : 1,
-              blurRadius: quantityInCart > 0 ? 8 : 4,
+              color: Colors.black.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 8,
               offset: const Offset(0, 2),
             ),
           ],
@@ -2092,372 +1884,617 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(
-                horizontal: isDesktop ? 12 : 8,
-                vertical: isDesktop ? 10 : 8,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.teal.shade600,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(11),
-                  topRight: Radius.circular(11),
-                ),
-              ),
-              child: Text(
-                '${_currencyFormatter.format(product.price)} soʻm',
-                style: TextStyle(
-                  fontSize: fontSize - 1,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(isDesktop ? 12 : 8),
-                child: Text(
-                  product.name,
-                  style: TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            if (quantityInCart > 0)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: isDesktop ? 12 : 8,
-                  vertical: 4,
-                ),
-                child: Text(
-                  'Jami: ${_currencyFormatter.format(totalPrice)} soʻm',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    color: Colors.teal.shade700,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(isDesktop ? 12 : 8),
+            Padding(
+              padding: EdgeInsets.all(padding),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (quantityInCart > 0) ...[
-                    GestureDetector(
-                      onTap: () {
-                        _updateQuantity(
-                          _cart.firstWhere((item) => item.product.id == product.id),
-                          -1,
-                        );
-                      },
-                      child: Container(
-                        width: isDesktop ? 32 : 28,
-                        height: isDesktop ? 32 : 28,
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade100,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          Icons.remove,
-                          size: fontSize,
-                          color: Colors.red.shade700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Text(
-                        '$quantityInCart',
-                        style: TextStyle(
-                          fontSize: fontSize,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.teal.shade700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  GestureDetector(
-                    onTap: () => _addToCart(product),
-                    child: Container(
-                      width: isDesktop ? 32 : 28,
-                      height: isDesktop ? 32 : 28,
-                      decoration: BoxDecoration(
-                        color: Colors.teal.shade600,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(
-                        Icons.add,
-                        size: fontSize,
-                        color: Colors.white,
-                      ),
+                  Icon(
+                    Icons.category,
+                    color: Colors.teal.shade600,
+                    size: fontSize + 4,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Kategoriyalar',
+                    style: TextStyle(
+                      fontSize: fontSize + 2,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
                     ),
                   ),
                 ],
               ),
             ),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(child: Text(_error!,
+                  style: TextStyle(color: Colors.red, fontSize: fontSize)))
+                  : _categories.isEmpty
+                  ? Center(
+                child: Text(
+                  'Kategoriyalar topilmadi',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: fontSize,
+                  ),
+                ),
+              )
+                  : ListView.builder(
+                padding: EdgeInsets.only(
+                  left: padding,
+                  right: padding,
+                  bottom: padding,
+                ),
+                itemCount: _categories.length,
+                itemBuilder: (context, index) {
+                  final category = _categories[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _buildCategoryButton(category, fontSize, isDesktop),
+                  );
+                },
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  bool _isSubmitting = false;
-
-  Future<void> _initializeToken() async {
-    try {
-      _token = await AuthService.getToken();
-      if (_token == null) {
-        await AuthService.loginAndPrintToken();
-        _token = await AuthService.getToken();
-      }
-      if (_token == null) {
-        print("❌ Token olishda xatolik: Token null bo'lib qoldi");
-      } else {
-        print("✅ Token muvaffaqiyatli olindi: $_token");
-      }
-    } catch (e) {
-      print("❗ Token olishda xatolik: $e");
-    }
-  }
-
-  Future<void> _createOrderAndPrint() async {
-    if (_isSubmitting || _cart.isEmpty) return;
-
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    const String apiUrl = "https://sora-b.vercel.app/api/orders/create";
-
-    final List<Map<String, dynamic>> items = _cart.map((item) {
-      return {'food_id': item.product.id, 'quantity': item.quantity};
-    }).toList();
-
-    final body = jsonEncode({
-      'table_id': widget.tableId,
-      'user_id': widget.user.id,
-      'first_name': widget.user.firstName,
-      'items': items,
-      'total_price': _calculateTotal(),
-    });
-
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-        body: body,
       );
+    }
 
-      print("✅ Printer ip olish uchun ${response.body}");
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print("✅ : ${response.body}");
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-
-        final String printerIP = responseData['printing']['results'][0]['printer_ip'] ?? '192.168.0.106';
-
-        final Map<String, dynamic> orderData = {
-          '_id': responseData['order']['id'],
-        };
-
-        await _printOrderDirectly(orderData, printerIP);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Zakaz yaratildi!!!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-
-        if (widget.onOrderCreated != null) {
-          widget.onOrderCreated!();
-        }
-
-        Navigator.of(context).pop();
-      } else {
-        throw Exception('API xatoligi: ${response.statusCode} - ${response.body}');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Xatolik: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+    Widget _buildProductsSection(double fontSize, double padding, bool isDesktop, bool isTablet) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.all(padding),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.restaurant_menu,
+                    color: Colors.teal.shade600,
+                    size: fontSize + 4,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Mahsulotlar',
+                    style: TextStyle(
+                      fontSize: fontSize + 2,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: padding,
+                  right: padding,
+                  bottom: padding,
+                ),
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
+                    ? Center(child: Text(_error!,
+                    style: TextStyle(color: Colors.red, fontSize: fontSize)))
+                    : _filteredProducts.isEmpty
+                    ? Center(
+                  child: Text(
+                    'Bu kategoriyada mahsulot yo\'q',
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                )
+                    : GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
+                    childAspectRatio: isDesktop ? 1.4 : 1.5,
+                    crossAxisSpacing: isDesktop ? 16 : 12,
+                    mainAxisSpacing: isDesktop ? 16 : 12,
+                  ),
+                  itemCount: _filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = _filteredProducts[index];
+                    return _buildProductCard(product, fontSize, isDesktop);
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
+    }
+
+    Widget _buildCategoryButton(Category category, double fontSize, bool isDesktop) {
+      final bool isSelected = _selectedCategoryId == category.id;
+      return SizedBox(
+        height: isDesktop ? 50 : 45,
+        child: ElevatedButton(
+          onPressed: () => _selectCategory(category.id, category.title),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isSelected ? Colors.teal.shade600 : Colors.white,
+            foregroundColor: isSelected ? Colors.white : Colors.teal.shade700,
+            elevation: isSelected ? 4 : 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                color: isSelected ? Colors.teal.shade600 : Colors.grey.shade300,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Icon(
+                _getCategoryIcon(category.title),
+                size: fontSize + 2,
+                color: isSelected ? Colors.white : Colors.teal.shade600,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  category.title,
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget _buildProductCard(Ovqat product, double fontSize, bool isDesktop) {
+      final int quantityInCart = _getQuantityInCart(product);
+      final double totalPrice = product.price * quantityInCart;
+
+      return GestureDetector(
+        onTap: () => _addToCart(product),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: quantityInCart > 0 ? Colors.teal.shade400 : Colors.grey.shade300,
+              width: quantityInCart > 0 ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: quantityInCart > 0
+                    ? Colors.teal.withOpacity(0.2)
+                    : Colors.grey.withOpacity(0.1),
+                spreadRadius: quantityInCart > 0 ? 2 : 1,
+                blurRadius: quantityInCart > 0 ? 8 : 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isDesktop ? 12 : 8,
+                  vertical: isDesktop ? 10 : 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade600,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(11),
+                    topRight: Radius.circular(11),
+                  ),
+                ),
+                child: Text(
+                  '${_currencyFormatter.format(product.price)} soʻm',
+                  style: TextStyle(
+                    fontSize: fontSize - 1,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(isDesktop ? 12 : 8),
+                  child: Text(
+                    product.name,
+                    style: TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+              if (quantityInCart > 0)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isDesktop ? 12 : 8,
+                    vertical: 4,
+                  ),
+                  child: Text(
+                    'Jami: ${_currencyFormatter.format(totalPrice)} soʻm',
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      color: Colors.teal.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(isDesktop ? 12 : 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (quantityInCart > 0) ...[
+                      GestureDetector(
+                        onTap: () {
+                          _updateQuantity(
+                            _cart.firstWhere((item) => item.product.id == product.id),
+                            -1,
+                          );
+                        },
+                        child: Container(
+                          width: isDesktop ? 32 : 28,
+                          height: isDesktop ? 32 : 28,
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade100,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            Icons.remove,
+                            size: fontSize,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Text(
+                          '$quantityInCart',
+                          style: TextStyle(
+                            fontSize: fontSize,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal.shade700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    GestureDetector(
+                      onTap: () => _addToCart(product),
+                      child: Container(
+                        width: isDesktop ? 32 : 28,
+                        height: isDesktop ? 32 : 28,
+                        decoration: BoxDecoration(
+                          color: Colors.teal.shade600,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          Icons.add,
+                          size: fontSize,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    bool _isSubmitting = false;
+
+    Future<void> _initializeToken() async {
+      try {
+        _token = await AuthService.getToken();
+        if (_token == null) {
+          await AuthService.loginAndPrintToken();
+          _token = await AuthService.getToken();
+        }
+        if (_token == null) {
+          print("❌ Token olishda xatolik: Token null bo'lib qoldi");
+        } else {
+          print("✅ Token muvaffaqiyatli olindi: $_token");
+        }
+      } catch (e) {
+        print("❗ Token olishda xatolik: $e");
       }
     }
-  }
 
+    Future<void> _createOrderAndPrint() async {
+      if (_isSubmitting || _cart.isEmpty) return;
 
-  Future<void> _printOrderDirectly(Map<String, dynamic> orderData, String printerIP) async {
-    const int port = 9100;
+      setState(() {
+        _isSubmitting = true;
+      });
 
-    try {
+      const String apiUrl = "https://sora-b.vercel.app/api/orders/create";
+
+      final List<Map<String, dynamic>> items = _cart.map((item) {
+        return {'food_id': item.product.id, 'quantity': item.quantity};
+      }).toList();
+
+      final body = jsonEncode({
+        'table_id': widget.tableId,
+        'user_id': widget.user.id,
+        'first_name': widget.user.firstName,
+        'items': items,
+        'total_price': _calculateTotal(),
+      });
+
+      try {
+        final response = await http.post(
+          Uri.parse(apiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_token',
+          },
+          body: body,
+        );
+
+        print("✅ Printer ip olish uchun ${response.body}");
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          print("✅ : ${response.body}");
+          final Map<String, dynamic> responseData = jsonDecode(response.body);
+
+          // Printer IP lar ro‘yxatini olish
+          final List<dynamic> printers = responseData['printing']['results'] ?? [];
+
+          if (printers.isEmpty) {
+            throw Exception('Printer IP topilmadi');
+          }
+
+          // IP larni List<String> qilib olish
+          final List<String> printerIPs = printers
+              .map<String>((printer) => printer['printer_ip'].toString())
+              .toList();
+
+          final Map<String, dynamic> orderData = {
+            '_id': responseData['order']['id'],
+            'tableName': widget.tableName ?? 'N/A',
+            'cart': _cart.map((item) => {
+              'product': {'name': item.product.name},
+              'quantity': item.quantity
+            }).toList(),
+          };
+
+          await _printOrderToAllPrinters(orderData, printerIPs);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Zakaz yaratildi!!!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+
+          if (widget.onOrderCreated != null) {
+            widget.onOrderCreated!();
+          }
+
+          Navigator.of(context).pop();
+        } else {
+          throw Exception('API xatoligi: ${response.statusCode} - ${response.body}');
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Xatolik: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+          });
+        }
+      }
+    }
+
+    Future<void> _printOrderToAllPrinters(Map<String, dynamic> orderData, List<String> printerIPs) async {
+      const int port = 9100;
+
       List<int> bytes = [];
 
       // ESC/POS commands
-      List<int> reset() => [0x1B, 0x40]; // Initialize
+      List<int> reset() => [0x1B, 0x40];
       List<int> boldOn() => [0x1B, 0x45, 0x01];
       List<int> boldOff() => [0x1B, 0x45, 0x00];
-      List<int> fontSize(int widthMultiplier, int heightMultiplier) => [0x1D, 0x21, (widthMultiplier - 1) << 4 | (heightMultiplier - 1)];
-      List<int> alignCenter() => [0x1B, 0x61, 0x01];
+      List<int> fontSize(int widthMultiplier, int heightMultiplier) =>
+          [0x1D, 0x21, (widthMultiplier - 1) << 4 | (heightMultiplier - 1)];
       List<int> alignLeft() => [0x1B, 0x61, 0x00];
+      List<int> alignCenter() => [0x1B, 0x61, 0x01];
       List<int> cut() => [0x1D, 0x56, 0x00];
+      List<int> feedLines(int n) => [0x1B, 0x64, n];
 
       bytes += reset();
+
+      // Mahsulotlar va Stol bir qator ichida markazda (fontSize(1,1) + bold)
       bytes += alignCenter();
-      bytes += fontSize(2, 2);
+      bytes += fontSize(1, 1); // Font kattaligi 1x qoldi
       bytes += boldOn();
-      bytes += _encodeText('--- Restoran Cheki ---\n\n');
 
-      bytes += fontSize(1, 1);
+      String tableName = orderData['tableName'] ?? 'N/A';
+      String leftText = 'Mahsulotlar';
+      String rightText = 'Stol: $tableName';
+
+      // Markazda chiqarish uchun oraliq qo‘shib joylash
+      int totalWidth = 32;
+      int combinedLength = leftText.length + rightText.length;
+      int spacesNeeded = totalWidth - combinedLength;
+      int sideSpaces = (spacesNeeded / 2).floor();
+
+      String spaces = ' ' * sideSpaces;
+
+      bytes += _encodeText('$spaces$leftText  $rightText$spaces\n');
       bytes += boldOff();
-      bytes += _encodeText('Buyurtma: ${orderData['_id'] ?? '#001'}\n');
-      bytes += _encodeText('Stol: ${widget.tableName ?? 'N/A'}\n');
-      bytes += _encodeText('Hodim: ${widget.user.firstName}\n');
-      bytes += _encodeText('Vaqt: ${DateFormat('d MMMM yyyy, HH:mm', 'uz').format(DateTime.now())}\n');
-      bytes += _encodeText('------------------------------\n');
 
-      bytes += boldOn();
-      bytes += _encodeText('Mahsulotlar:\n');
-      bytes += boldOff();
+      bytes += _encodeText('--------------------------------\n');
 
-      bytes += alignLeft();
-      for (var item in _cart) {
-        String name = item.product.name.length > 18
-            ? item.product.name.substring(0, 18)
-            : item.product.name;
-        String quantity = '${item.quantity}x';
-        String line = name.padRight(18) + quantity.padLeft(5);
-        bytes += _encodeText('$line\n');
+      // Header: Nomi   Soni (center)
+      bytes += alignCenter();
+      bytes += fontSize(2, 1); // 1.5x kattalashtirish
+      bytes += _encodeText('Nomi'.padRight(16) + 'Soni\n');
+      bytes += _encodeText('----------------------\n');
+
+      // Mahsulotlar ro'yxati (center)
+      List<dynamic> cartItems = orderData['cart'] ?? [];
+      for (var item in cartItems) {
+        String name = item['product']['name'].toString();
+        String quantity = '${item['quantity']}x';
+
+        name = name.length > 16 ? name.substring(0, 16) : name.padRight(16);
+
+        bytes += _encodeText('$name$quantity\n');
       }
 
-      bytes += alignCenter();
-      bytes += _encodeText('------------------------------\n\n');
+      bytes += _encodeText('--------------------\n');
+
+      // Pastga joy qoldirish va chekni kesish
+      bytes += feedLines(4);
       bytes += cut();
 
-      Socket socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 5));
-      socket.add(bytes);
-      await socket.flush();
-      socket.destroy();
-    } catch (e) {
-      print('Printer xatoligi: $e');
+      // Har bir IP uchun yuborish
+      for (String printerIP in printerIPs) {
+        try {
+          Socket socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 5));
+          socket.add(bytes);
+          await socket.flush();
+          await socket.close();
+          print('✅ Print yuborildi: $printerIP');
+        } catch (e) {
+          print('❌ Xato: $printerIP -> $e');
+        }
+      }
+    }
+
+    List<int> _encodeText(String text) {
+      return utf8.encode(text);
+    }
+
+
+    Widget _buildBottomActions(double fontSize, double padding, bool isDesktop) {
+      final double total = _calculateTotal();
+      final bool isCartEmpty = _cart.isEmpty;
+
+      return Container(
+        padding: EdgeInsets.all(padding),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: isDesktop ? 200 : 150),
+              child: OutlinedButton.icon(
+                onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                icon: Icon(Icons.arrow_back, size: fontSize + 2),
+                label: Text(
+                  'Bekor qilish',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: isDesktop ? 12 : 10),
+                  side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+                  foregroundColor: Colors.grey.shade600,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: isDesktop ? 300 : 250),
+              child: ElevatedButton.icon(
+                onPressed: (isCartEmpty || _isSubmitting) ? null : _createOrderAndPrint,
+                icon: _isSubmitting
+                    ? SizedBox(
+                  width: fontSize + 2,
+                  height: fontSize + 2,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+                    : Icon(Icons.restaurant_menu, size: fontSize + 2),
+                label: Text(
+                  _isSubmitting
+                      ? 'Yuklanmoqda...'
+                      : 'Zakaz berish (${_currencyFormatter.format(total)} soʻm)',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (isCartEmpty || _isSubmitting)
+                      ? Colors.grey.shade300
+                      : Colors.teal.shade600,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: isDesktop ? 12 : 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)
+                  ),
+                  elevation: (isCartEmpty || _isSubmitting) ? 0 : 4,
+                  shadowColor: Colors.teal.shade200,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
   }
-
-  List<int> _encodeText(String text) {
-    return text.codeUnits;
-  }
-
-
-  Widget _buildBottomActions(double fontSize, double padding, bool isDesktop) {
-    final double total = _calculateTotal();
-    final bool isCartEmpty = _cart.isEmpty;
-
-    return Container(
-      padding: EdgeInsets.all(padding),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: isDesktop ? 200 : 150),
-            child: OutlinedButton.icon(
-              onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-              icon: Icon(Icons.arrow_back, size: fontSize + 2),
-              label: Text(
-                'Bekor qilish',
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: isDesktop ? 12 : 10),
-                side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                foregroundColor: Colors.grey.shade600,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: isDesktop ? 300 : 250),
-            child: ElevatedButton.icon(
-              onPressed: (isCartEmpty || _isSubmitting) ? null : _createOrderAndPrint,
-              icon: _isSubmitting
-                  ? SizedBox(
-                width: fontSize + 2,
-                height: fontSize + 2,
-                child: const CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-                  : Icon(Icons.restaurant_menu, size: fontSize + 2),
-              label: Text(
-                _isSubmitting
-                    ? 'Yuklanmoqda...'
-                    : 'Zakaz berish (${_currencyFormatter.format(total)} soʻm)',
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: (isCartEmpty || _isSubmitting)
-                    ? Colors.grey.shade300
-                    : Colors.teal.shade600,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: isDesktop ? 12 : 10),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)
-                ),
-                elevation: (isCartEmpty || _isSubmitting) ? 0 : 4,
-                shadowColor: Colors.teal.shade200,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

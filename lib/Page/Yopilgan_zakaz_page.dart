@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthServices {
@@ -352,78 +354,115 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
     );
   }
 
+
+
+
+  Future<void> _printOrderDirectly(Map<String, dynamic> orderData, String printerName) async {
+    try {
+      final List<int> bytes = [];
+
+      // ESC/POS reset
+      bytes.addAll([0x1B, 0x40]); // Initialize printer
+
+      // Katta font (double height & width)
+      bytes.addAll([0x1D, 0x21, 0x11]); // 0x11 = double width + double height
+
+      bytes.addAll(utf8.encode('===== Buyurtma Cheki =====\n'));
+
+      // Normal font
+      bytes.addAll([0x1D, 0x21, 0x00]);
+
+      bytes.addAll(utf8.encode('Buyurtma: ${orderData['orderNumber']}\n'));
+      bytes.addAll(utf8.encode('Stol: ${orderData['tableNumber']}\n'));
+      bytes.addAll(utf8.encode('Mahsulotlar: ${orderData['itemsCount']}\n'));
+      bytes.addAll(utf8.encode('Xizmat: ${orderData['serviceAmount']} so\'m\n'));
+      bytes.addAll(utf8.encode('Status: ${orderData['status']}\n'));
+      bytes.addAll(utf8.encode('Sana: ${orderData['completedAt']}\n'));
+
+      bytes.addAll(utf8.encode('------------------------------\n'));
+
+      // Bold ON
+      bytes.addAll([0x1B, 0x45, 0x01]);
+      bytes.addAll(utf8.encode('JAMI: ${orderData['subtotal']} so\'m\n'));
+      bytes.addAll(utf8.encode('YAKUNIY: ${orderData['finalTotal']} so\'m\n'));
+      // Bold OFF
+      bytes.addAll([0x1B, 0x45, 0x00]);
+
+      bytes.addAll(utf8.encode('\n\n\n'));
+
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/print_${DateTime.now().millisecondsSinceEpoch}.bin');
+      await tempFile.writeAsBytes(bytes);
+
+      final result = await Process.run('powershell', [
+        '-Command',
+        'if (Get-Printer -Name "$printerName") { Get-Content -Encoding Byte "${tempFile.path}" | Out-Printer -Name "$printerName" } else { Write-Error "Printer topilmadi" }'
+      ]);
+
+      if (result.exitCode == 0) {
+        print('✅ Chek printerga yuborildi');
+      } else {
+        print('❌ Xatolik: ${result.stderr}');
+      }
+
+      await tempFile.delete();
+    } catch (e) {
+      print('❗ Chop etishda xatolik: $e');
+    }
+  }
+
   Widget _buildOrderCard(dynamic order) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Container(
+        width: 280,
+        height: 100, // Add a fixed height to make the card taller
+        padding: EdgeInsets.all(8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.blueAccent.withOpacity(0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 4,
-              offset: Offset(0, 1),
+              offset: Offset(0, 2),
             ),
           ],
         ),
-        child: Padding(
-          padding: EdgeInsets.all(4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.receipt, color: Colors.blueAccent, size: 18),
-                  SizedBox(width: 2),
-                  Expanded(
-                    child: Text(
-                      '№ ${order['orderNumber']}',
-                      style: TextStyle(
-                        fontSize: 25,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueAccent,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.receipt, color: Colors.blueAccent, size: 20),
+                SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '№ ${order['orderNumber']}',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueAccent,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-              _buildInfoRow(
-                Icons.table_restaurant,
-                'Stol: ${order['tableNumber']}',
-              ),
-              _buildInfoRow(Icons.fastfood, 'Mahsulot: ${order['itemsCount']}'),
-              _buildInfoRow(
-                Icons.monetization_on,
-                'Jami: ${order['subtotal']}',
-              ),
-              _buildInfoRow(
-                Icons.room_service,
-                'Xizmat: ${order['serviceAmount']}',
-              ),
-              _buildInfoRow(
-                Icons.account_balance_wallet,
-                'Yakuniy: ${order['finalTotal']}',
-              ),
-              _buildInfoRow(
-                Icons.check_circle,
-                'Holati: ${order['status']}',
-                color: Colors.green,
-              ),    _buildInfoRow(
-                Icons.calendar_month,
-                'Sana: ${order['completedAt']}',
-                color: Colors.blue,
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+            SizedBox(height: 4),
+            _buildInfoRow(Icons.table_restaurant, 'Stol: ${order['tableNumber']}'),
+            _buildInfoRow(Icons.fastfood, 'Mahsulot: ${order['itemsCount']}'),
+            _buildInfoRow(Icons.monetization_on, 'Jami: ${order['subtotal']} so\'m'),
+            _buildInfoRow(Icons.room_service, 'Xizmat: ${order['serviceAmount']} so\'m'),
+            _buildInfoRow(Icons.account_balance_wallet, 'Yakuniy: ${order['finalTotal']} so\'m'),
+            _buildInfoRow(Icons.check_circle, 'Holati: ${order['status']}', color: Colors.green),
+            SizedBox(height: 8),
+          ],
         ),
       ),
     );
   }
-
   Widget _buildInfoRow(IconData icon, String text, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),

@@ -38,6 +38,11 @@ dependencies:
   http: ^1.4.0
   esc_pos_utils: ^1.1.0
   shared_preferences: ^2.5.3
+  printing: ^5.3.0
+  esc_pos_printer: ^4.1.0
+  path_provider: ^2.0.15
+  typed_data: ^1.4.0
+  image: ^3.3.0
 
 dev_dependencies:
   flutter_test:
