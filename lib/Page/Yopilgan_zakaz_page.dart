@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -144,10 +145,16 @@ class OrderService {
 
 // USB Printer Service - yangi
 class UsbPrinterService {
+
+
+
+
   Future<List<int>> loadLogoBytes() async {
     try {
-      final file = File('rasm/sara.png');
-      final bytes = await file.readAsBytes();
+      // Faylni rootBundle orqali yuklash (File ishlamaydi!)
+      ByteData byteData = await rootBundle.load('assets/rasm/sara.png');
+      final bytes = byteData.buffer.asUint8List();
+
       final image = img.decodeImage(bytes)!;
 
       final width = image.width;
@@ -219,90 +226,84 @@ class UsbPrinterService {
 
     StartPagePrinter(hPrinter.value);
 
-    // Logo yuklash
     final logoBytes = await loadLogoBytes();
 
-    // Logo markazlash
     List<int> centeredLogo = [];
     if (logoBytes.isNotEmpty) {
-      centeredLogo.addAll([0x1B, 0x61, 0x01]); // Center align
+      centeredLogo.addAll([0x1B, 0x61, 0x01]);
       centeredLogo.addAll(logoBytes);
-      centeredLogo.addAll([0x1B, 0x61, 0x00]); // Reset align
+      centeredLogo.addAll([0x1B, 0x61, 0x00]);
     }
 
-    // Hozirgi sana va vaqt
     final now = DateTime.now();
     final dateTime = '${now.day.toString().padLeft(2, '0')}.${now.month.toString().padLeft(2, '0')}.${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    // API ma'lumotlari
     final orderNumber = orderData['orderNumber'] ?? 'N/A';
     final tableNumber = orderData['tableNumber'] ?? 'N/A';
     final waiterName = orderData['waiterName'] ?? 'N/A';
     final subtotal = orderData['subtotal'] ?? 0;
     final serviceAmount = orderData['serviceAmount'] ?? 0;
     final finalTotal = orderData['finalTotal'] ?? 0;
-    final status = orderData['status'] ?? 'N/A';
     final items = orderData['items'] ?? [];
 
     final List<int> escPosData = <int>[
-      0x1B, 0x40,  // Initialize printer
-
-      // Logo (center)
+      0x1B, 0x40,
       ...centeredLogo,
-      // Manzil va Telefon (bold)
-      0x1B, 0x21, 0x08,  // Bold on
-      ...centerText('Toshkent shahri, Yunusobod tumani\n'),
-      ...centerText('Tel: +998 90 123 45 67\n'),
-      0x1B, 0x21, 0x00,  // Normal font
-      0x1B, 0x64, 0x01,  // 1 qator bo'sh joy
+      0x1B, 0x64, 0x01,
 
-      // Buyurtma tafsilotlari (center)
-      ...centerText('Sana: $dateTime\n'),
-      ...centerText('Buyurtma №: $orderNumber\n'),
-      ...centerText('Stol №: $tableNumber\n'),
-      ...centerText('Ofitsiant: $waiterName\n'),
-      ...centerText('Holati: $status\n'),
+      0x1B, 0x21, 0x10,
+      0x1B, 0x45, 0x01,
+      ...centerText('Namangan shahri, Namangan tumani'),
+      0x1B, 0x64, 0x01,
+      ...centerText('Tel: +998 90 123 45 67'),
+      0x1B, 0x64, 0x01,
+      0x1B, 0x45, 0x00,
+      0x1B, 0x21, 0x00,
 
-      // Separator line
-      ...centerText('================================\n'),
+      0x1B, 0x21, 0x10,
+      0x1B, 0x45, 0x01,
+      ...centerText('Sana: $dateTime'),
+      0x1B, 0x64, 0x01,
+      ...centerText('Buyurtma №: $orderNumber  |  Stol №: $tableNumber'),
+      0x1B, 0x64, 0x01,
+      0x1B, 0x45, 0x00,
+      0x1B, 0x21, 0x00,
 
-      // BUYURTMA TAFSILOTLARI Sarlavha
-      0x1B, 0x21, 0x08,  // Bold on
-      ...centerText('BUYURTMA TAFSILOTLARI:\n'),
-      0x1B, 0x21, 0x00,  // Normal font
-      ...centerText('--------------------------------\n'),
+      ...centerText('Ofitsiant: $waiterName'),
+      0x1B, 0x64, 0x01,
 
-      // Mahsulotlar ro'yxati
-      ...buildItemsList(items),
+      ...centerText('================================'),
+      0x1B, 0x64, 0x01,
 
-      ...centerText('--------------------------------\n'),
+      0x1B, 0x21, 0x10,
+      0x1B, 0x45, 0x01,
 
-      // Hisob-kitob qismi (center)
-      ...centerText('Mahsulotlar jami: ${formatNumber(subtotal)} so\'m\n'),
-      ...centerText('Xizmat haqi: ${formatNumber(serviceAmount)} so\'m\n'),
-      ...centerText('--------------------------------\n'),
+      0x1B, 0x21, 0x10,
+      0x1B, 0x45, 0x01,
+      ...centerText('Mahsulotlar jami: ${formatNumber(subtotal)} so\'m'),
+      0x1B, 0x64, 0x01,
+      ...centerText('Xizmat haqi: ${formatNumber(serviceAmount)} so\'m'),
+      0x1B, 0x64, 0x01,
+      0x1B, 0x45, 0x00,
+      0x1B, 0x21, 0x00,
 
-      // Yakuniy summa (katta va qalin, center)
-      0x1B, 0x21, 0x30,  // Double Width & Height
-      0x1B, 0x45, 0x01,  // Bold on
-      ...centerText('JAMI: ${formatNumber(finalTotal)} so\'m\n'),
-      0x1B, 0x21, 0x00,  // Normal font
-      0x1B, 0x45, 0x00,  // Bold off
+      0x1B, 0x21, 0x30,
+      0x1B, 0x45, 0x01,
+      ...centerText('JAMI: ${formatNumber(finalTotal)} so\'m'),
+      0x1B, 0x64, 0x02,
+      0x1B, 0x45, 0x00,
+      0x1B, 0x21, 0x00,
 
-      0x1B, 0x64, 0x01,  // 1 qator bo'sh joy
+      ...centerText('================================'),
+      0x1B, 0x64, 0x01,
 
-      // Separator line
-      ...centerText('================================\n'),
+      0x1B, 0x21, 0x10,
+      0x1B, 0x45, 0x01,
+      ...centerText('TASHRIFINGIZ UCHUN RAHMAT!'),
+      0x1B, 0x45, 0x00,
+      0x1B, 0x21, 0x00,
 
-      // Rahmat matni (bold, center)
-      0x1B, 0x21, 0x10,  // Slightly bigger font
-      ...centerText('TASHRIFINGIZ UCHUN RAHMAT!\n'),
-      ...centerText('Yana kutib qolamiz!\n'),
-      0x1B, 0x21, 0x00,  // Normal font
-
-      0x1B, 0x64, 0x04,  // 4 qator bo'sh joy
-
-      // Cut paper
+      0x1B, 0x64, 0x04,
       0x1D, 0x56, 0x00
     ];
 
@@ -330,36 +331,32 @@ class UsbPrinterService {
     calloc.free(docInfo);
   }
 
-// Matnni markazlashtirish funksiyasi
   List<int> centerText(String text) {
     List<int> result = [];
-    final lines = text.split('\n');
-    for (final line in lines) {
-      if (line.isNotEmpty) {
-        result.addAll([0x1B, 0x61, 0x01]);  // Center align
-        result.addAll(line.codeUnits);
-        result.add(0x0A); // New line
-      }
-    }
+    result.addAll([0x1B, 0x61, 0x01]);
+    result.addAll(text.codeUnits);
+    result.add(0x0A);
     return result;
   }
 
-// Mahsulotlar ro'yxatini formatlab berish
   List<int> buildItemsList(List<dynamic> items) {
     List<int> result = [];
     for (var item in items) {
       final name = item['name'] ?? '';
       final qty = item['quantity'] ?? 1;
       final price = item['price'] ?? 0;
-      final line = '$name x$qty - ${formatNumber(price)}\n';
+      final line = '$name x$qty - ${formatNumber(price)}';
       result.addAll(centerText(line));
+      result.addAll([0x1B, 0x64, 0x01]);
     }
     return result;
   }
 
-// Narxni formatlash funksiyasi
   String formatNumber(dynamic number) {
-    return number.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return number.toString().replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (Match m) => '${m[1]},'
+    );
   }
 
 }
