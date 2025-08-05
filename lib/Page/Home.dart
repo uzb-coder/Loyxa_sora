@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'package:charset_converter/charset_converter.dart';
 import 'package:esc_pos_utils/esc_pos_utils.dart';
@@ -12,7 +13,7 @@ import '../Controller/StolController.dart';
 import '../Controller/OvqatCOntroller.dart';
 import '../Controller/ZakazController.dart';
 import '../Controller/usersCOntroller.dart';
-import '../Example.dart';
+import 'Example.dart';
 import '../Model/Categorya_Model.dart';
 import '../Model/Ovqat_model.dart';
 import '../Model/StolModel.dart';
@@ -125,6 +126,17 @@ class _PosScreenState extends State<PosScreen> {
   Map<String, bool> _tableOccupiedStatus = {};
   bool _isLoadingTables = false;
 
+  // Cache uchun static variables
+  static List<StolModel>? _cachedTables;
+  static Map<String, List<Order>>? _cachedOrders;
+  static Map<String, bool>? _cachedTableStatus;
+  static DateTime? _lastTablesUpdate;
+  static DateTime? _lastOrdersUpdate;
+  static DateTime? _lastStatusUpdate;
+  static const Duration _tablesCacheExpiry = Duration(minutes: 10);
+  static const Duration _ordersCacheExpiry = Duration(seconds: 30);
+  static const Duration _statusCacheExpiry = Duration(seconds: 15);
+
   @override
   void initState() {
     super.initState();
@@ -138,39 +150,88 @@ class _PosScreenState extends State<PosScreen> {
     super.dispose();
   }
 
+  // Cache validation methods
+  bool _isTablesCacheValid() {
+    return _cachedTables != null &&
+        _lastTablesUpdate != null &&
+        DateTime.now().difference(_lastTablesUpdate!) < _tablesCacheExpiry;
+  }
+
+  bool _isOrdersCacheValid(String tableId) {
+    return _cachedOrders != null &&
+        _cachedOrders!.containsKey(tableId) &&
+        _lastOrdersUpdate != null &&
+        DateTime.now().difference(_lastOrdersUpdate!) < _ordersCacheExpiry;
+  }
+
+  bool _isStatusCacheValid() {
+    return _cachedTableStatus != null &&
+        _lastStatusUpdate != null &&
+        DateTime.now().difference(_lastStatusUpdate!) < _statusCacheExpiry;
+  }
+
   void _startRealTimeUpdates() {
-    _realTimeTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    // Real-time updates ni kamroq chastota bilan ishlaymiz
+    _realTimeTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       _checkTableStatuses();
+      // Agar biror stol tanlangan bo'lsa, uning zakazlarini yangilaymiz
+      if (_selectedTableId != null) {
+        _fetchOrdersForTable(_selectedTableId!);
+      }
     });
   }
 
   Future<void> _checkTableStatuses() async {
     if (_token == null) return;
 
+    // Cache mavjud va valid bo'lsa, foydalanamiz
+    if (_isStatusCacheValid()) {
+      setState(() {
+        _tableOccupiedStatus = Map<String, bool>.from(_cachedTableStatus!);
+      });
+      return;
+    }
+
     try {
       Map<String, bool> newTableStatus = {};
 
-      await Future.wait(_tables.map((table) async {
-        try {
-          final response = await http.get(
-            Uri.parse('https://sora-b.vercel.app/api/orders/table/${table.id}'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_token',
-            },
-          ).timeout(const Duration(seconds: 2));
+      // Parallel requests with limited concurrency
+      final futures = <Future>[];
+      final semaphore = Semaphore(5); // Max 5 parallel requests
 
-          if (response.statusCode == 200) {
-            final List<dynamic> tableOrders = jsonDecode(response.body);
-            bool isOccupied = tableOrders.any((order) => order['status'] == 'pending');
-            newTableStatus[table.id] = isOccupied;
-          } else {
-            newTableStatus[table.id] = false;
-          }
-        } catch (e) {
-          newTableStatus[table.id] = _tableOccupiedStatus[table.id] ?? false;
-        }
-      }));
+      for (var table in _tables) {
+        futures.add(
+            semaphore.acquire().then((_) async {
+              try {
+                final response = await http.get(
+                  Uri.parse('https://sora-b.vercel.app/api/orders/table/${table.id}'),
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $_token',
+                  },
+                ).timeout(const Duration(seconds: 3));
+
+                if (response.statusCode == 200) {
+                  final List<dynamic> tableOrders = jsonDecode(response.body);
+                  bool isOccupied = tableOrders.any((order) => order['status'] == 'pending');
+                  newTableStatus[table.id] = isOccupied;
+                } else {
+                  newTableStatus[table.id] = false;
+                }
+              } catch (e) {
+                newTableStatus[table.id] = _tableOccupiedStatus[table.id] ?? false;
+              } finally {
+                semaphore.release();
+              }
+            })
+        );
+      }
+
+      await Future.wait(futures);
+
+      // Cache'ga saqlaymiz
+      _cachedTableStatus = newTableStatus;
+      _lastStatusUpdate = DateTime.now();
 
       if (!_mapEquals(newTableStatus, _tableOccupiedStatus)) {
         if (mounted) {
@@ -208,13 +269,27 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   Future<void> _loadInitialTables() async {
+    // Cache'dan yuklashga harakat qilamiz
+    if (_isTablesCacheValid()) {
+      setState(() {
+        _tables = List<StolModel>.from(_cachedTables!);
+        _isLoadingTables = false;
+      });
+      _checkTableStatuses();
+      return;
+    }
+
     if (mounted) {
       setState(() => _isLoadingTables = true);
     }
 
     try {
       final stolController = StolController();
-      final tables = await stolController.fetchTables().timeout(const Duration(seconds: 3));
+      final tables = await stolController.fetchTables().timeout(const Duration(seconds: 5));
+
+      // Cache'ga saqlaymiz
+      _cachedTables = tables;
+      _lastTablesUpdate = DateTime.now();
 
       if (mounted) {
         setState(() {
@@ -227,6 +302,7 @@ class _PosScreenState extends State<PosScreen> {
       if (mounted) {
         setState(() => _isLoadingTables = false);
       }
+      print("Stollarni yuklashda xatolik: $e");
     }
   }
 
@@ -241,6 +317,15 @@ class _PosScreenState extends State<PosScreen> {
   Future<void> _fetchOrdersForTable(String tableId) async {
     if (_token == null) return;
 
+    // Cache'dan tekshiramiz
+    if (_isOrdersCacheValid(tableId)) {
+      setState(() {
+        _selectedTableOrders = List<Order>.from(_cachedOrders![tableId]!);
+        _isLoadingOrders = false;
+      });
+      return;
+    }
+
     setState(() => _isLoadingOrders = true);
 
     try {
@@ -250,20 +335,32 @@ class _PosScreenState extends State<PosScreen> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_token',
         },
-      ).timeout(const Duration(seconds: 3));
+      ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
+        final orders = data
+            .map((json) => Order.fromJson(json))
+            .where((order) => order.status == 'pending')
+            .toList();
+
+        // Cache'ga saqlaymiz
+        _cachedOrders ??= {};
+        _cachedOrders![tableId] = orders;
+        _lastOrdersUpdate = DateTime.now();
+
         if (mounted) {
           setState(() {
-            _selectedTableOrders = data
-                .map((json) => Order.fromJson(json))
-                .where((order) => order.status == 'pending')
-                .toList();
+            _selectedTableOrders = orders;
             _isLoadingOrders = false;
           });
         }
       } else {
+        // Bo'sh natijani ham cache'laymiz
+        _cachedOrders ??= {};
+        _cachedOrders![tableId] = [];
+        _lastOrdersUpdate = DateTime.now();
+
         if (mounted) {
           setState(() {
             _selectedTableOrders = [];
@@ -278,6 +375,7 @@ class _PosScreenState extends State<PosScreen> {
           _isLoadingOrders = false;
         });
       }
+      print("Zakazlarni yuklashda xatolik: $e");
     }
   }
 
@@ -299,6 +397,10 @@ class _PosScreenState extends State<PosScreen> {
             tableName: _selectedTableName,
             user: widget.user,
             onOrderCreated: () {
+              // Cache'ni yangilaymiz
+              _invalidateOrdersCache(tableId);
+              _invalidateStatusCache();
+
               _fetchOrdersForTable(tableId);
               _checkTableStatuses();
             },
@@ -320,6 +422,10 @@ class _PosScreenState extends State<PosScreen> {
       bool success = await Zakazcontroller().closeOrder(order.id);
 
       if (success) {
+        // Cache'ni yangilaymiz
+        _invalidateOrdersCache(_selectedTableId!);
+        _invalidateStatusCache();
+
         setState(() {
           _selectedTableOrders.removeWhere((o) => o.id == order.id);
         });
@@ -337,7 +443,29 @@ class _PosScreenState extends State<PosScreen> {
     }
   }
 
+  // Cache invalidation methods
+  void _invalidateOrdersCache(String tableId) {
+    _cachedOrders?.remove(tableId);
+    _lastOrdersUpdate = null;
+  }
+
+  void _invalidateStatusCache() {
+    _cachedTableStatus = null;
+    _lastStatusUpdate = null;
+  }
+
+  // Static method to clear all cache
+  static void clearAllCache() {
+    _cachedTables = null;
+    _cachedOrders = null;
+    _cachedTableStatus = null;
+    _lastTablesUpdate = null;
+    _lastOrdersUpdate = null;
+    _lastStatusUpdate = null;
+  }
+
   void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: const TextStyle(color: Colors.white)),
@@ -349,6 +477,7 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -356,7 +485,7 @@ class _PosScreenState extends State<PosScreen> {
     final isTablet = screenWidth >= 600 && screenWidth <= 1200;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9), // Softer off-white background
+      backgroundColor: const Color(0xFFF1F5F9),
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(isDesktop ? 70 : 60),
         child: Container(
@@ -428,7 +557,7 @@ class _PosScreenState extends State<PosScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => OrderDetailsPage(waiterName: widget.user.firstName),
+                        builder: (context) => OrderTablePage(waiterName: widget.user.firstName),
                       ),
                     );
                   },
@@ -546,9 +675,9 @@ class _PosScreenState extends State<PosScreen> {
                     color: AppColors.accent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'Jonli',
-                    style: TextStyle(
+                  child: Text(
+                    _isStatusCacheValid() ? 'Cache' : 'Jonli',
+                    style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.white,
                       fontWeight: FontWeight.w600,
@@ -575,28 +704,34 @@ class _PosScreenState extends State<PosScreen> {
                   style: TextStyle(color: AppColors.grey),
                 ),
               )
-                  : GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
-                  childAspectRatio: 1.1,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                itemCount: _tables.length,
-                itemBuilder: (_, index) {
-                  final table = _tables[index];
-                  final isSelected = _selectedTableId == table.id;
-                  final isOccupied = _tableOccupiedStatus[table.id] ?? false;
+                  : Builder(
+                builder: (context) {
+                  final sortedTables = List<StolModel>.from(_tables)
+                    ..sort((a, b) => a.number.compareTo(b.number));
+                  return GridView.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
+                      childAspectRatio: 1.1,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    itemCount: sortedTables.length,
+                    itemBuilder: (_, index) {
+                      final table = sortedTables[index];
+                      final isSelected = _selectedTableId == table.id;
+                      final isOccupied = _tableOccupiedStatus[table.id] ?? false;
 
-                  return GestureDetector(
-                    onTap: () {
-                      if (_selectedTableId == table.id && !isOccupied) {
-                        _showOrderScreenDialog(table.id);
-                      } else {
-                        _handleTableTap(table.name, table.id);
-                      }
+                      return GestureDetector(
+                        onTap: () {
+                          if (_selectedTableId == table.id && !isOccupied) {
+                            _showOrderScreenDialog(table.id);
+                          } else {
+                            _handleTableTap(table.name, table.id);
+                          }
+                        },
+                        child: _buildTableCard(table, isSelected, isOccupied),
+                      );
                     },
-                    child: _buildTableCard(table, isSelected, isOccupied),
                   );
                 },
               ),
@@ -619,8 +754,8 @@ class _PosScreenState extends State<PosScreen> {
       statusColor = AppColors.error;
       statusText = "Band";
     } else if (isSelected) {
-      cardColor = Colors.green.withOpacity(0.1); // Red for selected table
-      textColor = Colors.green ; // Red text for selected table
+      cardColor = Colors.green.withOpacity(0.1);
+      textColor = Colors.green;
       statusColor = AppColors.accent;
       statusText = "Tanlangan";
     } else {
@@ -635,7 +770,7 @@ class _PosScreenState extends State<PosScreen> {
         color: cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isOccupied ? AppColors.error : (isSelected ? Colors.red : AppColors.lightGrey),
+          color: isOccupied ? AppColors.error : (isSelected ? Colors.green : AppColors.lightGrey),
           width: isOccupied || isSelected ? 2 : 1,
         ),
       ),
@@ -650,7 +785,7 @@ class _PosScreenState extends State<PosScreen> {
                 color: textColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.table_bar,
                 size: 28,
                 color: AppColors.white,
@@ -680,14 +815,6 @@ class _PosScreenState extends State<PosScreen> {
                   color: statusColor,
                   fontWeight: FontWeight.w600,
                 ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Status: ${table.status}",
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.grey,
               ),
             ),
           ],
@@ -1071,6 +1198,34 @@ class _PosScreenState extends State<PosScreen> {
   }
 }
 
+// Semaphore class for limiting concurrent requests
+class Semaphore {
+  int _permits;
+  final Queue<Completer<void>> _waitQueue = Queue<Completer<void>>();
+
+  Semaphore(this._permits);
+
+  Future<void> acquire() async {
+    if (_permits > 0) {
+      _permits--;
+      return;
+    }
+
+    final completer = Completer<void>();
+    _waitQueue.addLast(completer);
+    return completer.future;
+  }
+
+  void release() {
+    if (_waitQueue.isNotEmpty) {
+      final completer = _waitQueue.removeFirst();
+      completer.complete();
+    } else {
+      _permits++;
+    }
+  }
+}
+
 class OrderScreenContent extends StatefulWidget {
   final User user;
   final String? tableId;
@@ -1085,6 +1240,7 @@ class OrderScreenContent extends StatefulWidget {
     this.tableName,
   });
 
+
   @override
   State<OrderScreenContent> createState() => _OrderScreenContentState();
 }
@@ -1092,6 +1248,7 @@ class OrderScreenContent extends StatefulWidget {
 class _OrderScreenContentState extends State<OrderScreenContent> {
   String? _selectedCategoryId;
   String _selectedCategoryName = '';
+  String? _selectedSubcategory;
   List<Category> _categories = [];
   List<Ovqat> _allProducts = [];
   List<Ovqat> _filteredProducts = [];
@@ -1103,18 +1260,43 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   final List<CartItem> _cart = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
 
+  // Cache uchun static variables
+  static List<Category>? _cachedCategories;
+  static List<Ovqat>? _cachedProducts;
+  static DateTime? _lastCacheTime;
+  static const Duration _cacheExpiry = Duration(minutes: 5);
+
   @override
   void initState() {
     super.initState();
-    _loadData();
     _initializeToken();
+    _loadData();
+  }
+
+  // Cache tekshirish
+  bool _isCacheValid() {
+    return _cachedCategories != null &&
+        _cachedProducts != null &&
+        _lastCacheTime != null &&
+        DateTime.now().difference(_lastCacheTime!) < _cacheExpiry;
   }
 
   Future<void> _loadData() async {
     try {
       setState(() => _isLoading = true);
 
-      // Parallel loading for better performance
+      // Cache mavjud bo'lsa ishlatamiz
+      if (_isCacheValid()) {
+        setState(() {
+          _categories = _cachedCategories!;
+          _allProducts = _cachedProducts!;
+          _isLoading = false;
+          _filterProductsByCategory();
+        });
+        return;
+      }
+
+      // Parallel so'rovlar yuboramiz
       final results = await Future.wait([
         CategoryaController().fetchCategories().timeout(const Duration(seconds: 3)),
         OvqatController().fetchProducts().timeout(const Duration(seconds: 3)),
@@ -1123,48 +1305,70 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       final categories = results[0] as List<Category>;
       final products = results[1] as List<Ovqat>;
 
+      // Cache ga saqlaymiz
+      _cachedCategories = categories;
+      _cachedProducts = products;
+      _lastCacheTime = DateTime.now();
+
       if (mounted) {
         setState(() {
           _categories = categories;
           _allProducts = products;
           _isLoading = false;
-
-          if (categories.isNotEmpty) {
-            _selectedCategoryId = categories.first.id;
-            _selectedCategoryName = categories.first.title;
-            _filterProductsByCategory();
-          }
+          _filterProductsByCategory();
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _error = 'Ma\'lumotlarni yuklashda xatolik yuz berdi';
+          _error = 'Ma\'lumotlarni yuklashda xatolik yuz berdi: $e';
         });
       }
     }
   }
 
+  // Optimized filtering
   void _filterProductsByCategory() {
+    if (_selectedCategoryId == null) {
+      _filteredProducts = [];
+      return;
+    }
+
+    List<Ovqat> filtered;
+
+    if (_selectedSubcategory != null) {
+      // Subcategory bo'yicha filter
+      filtered = _allProducts.where((product) =>
+      product.categoryId == _selectedCategoryId &&
+          product.subcategories == _selectedSubcategory).toList();
+    } else {
+      // Faqat category bo'yicha filter
+      filtered = _allProducts.where((product) =>
+      product.categoryId == _selectedCategoryId).toList();
+    }
+
     setState(() {
-      _filteredProducts = _selectedCategoryId != null
-          ? _allProducts.where((product) => product.categoryId == _selectedCategoryId).toList()
-          : [];
+      _filteredProducts = filtered;
     });
   }
 
-  void _selectCategory(String categoryId, String categoryName) {
-    setState(() {
-      _selectedCategoryId = categoryId;
-      _selectedCategoryName = categoryName;
-      _filterProductsByCategory();
-    });
+  void _selectCategory(String categoryId, String categoryName, {String? subcategory}) {
+    // Agar bir xil kategoriya tanlansa, qayta filter qilmaymiz
+    if (_selectedCategoryId == categoryId && _selectedSubcategory == subcategory) {
+      return;
+    }
+
+    _selectedCategoryId = categoryId;
+    _selectedCategoryName = categoryName;
+    _selectedSubcategory = subcategory;
+    _filterProductsByCategory();
   }
 
   void _addToCart(Ovqat product) {
+    final existingItemIndex = _cart.indexWhere((item) => item.product.id == product.id);
+
     setState(() {
-      final existingItemIndex = _cart.indexWhere((item) => item.product.id == product.id);
       if (existingItemIndex >= 0) {
         _cart[existingItemIndex].quantity++;
       } else {
@@ -1182,8 +1386,9 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     });
   }
 
+  // Memoized calculation
   double _calculateTotal() {
-    return _cart.fold(0, (total, item) => total + item.product.price * item.quantity);
+    return _cart.fold(0.0, (total, item) => total + (item.product.price * item.quantity));
   }
 
   int _getQuantityInCart(Ovqat product) {
@@ -1216,23 +1421,26 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
+  // Optimized order creation
   Future<void> _createOrderAndPrint() async {
     if (_isSubmitting || _cart.isEmpty) return;
 
     setState(() => _isSubmitting = true);
 
     try {
-      final List<Map<String, dynamic>> items = _cart.map((item) {
-        return {'food_id': item.product.id, 'quantity': item.quantity};
+      // JSON ni oldindan tayyorlaymiz
+      final items = _cart.map((item) => {
+        'food_id': item.product.id,
+        'quantity': item.quantity
       }).toList();
 
-      final body = jsonEncode({
+      final orderData = {
         'table_id': widget.tableId,
         'user_id': widget.user.id,
         'first_name': widget.user.firstName,
         'items': items,
         'total_price': _calculateTotal(),
-      });
+      };
 
       final response = await http.post(
         Uri.parse("https://sora-b.vercel.app/api/orders/create"),
@@ -1240,20 +1448,22 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_token',
         },
-        body: body,
-      ).timeout(const Duration(seconds: 5));
+        body: jsonEncode(orderData),
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        final List<dynamic> printers = responseData['printing']['results'] ?? [];
+        final responseData = jsonDecode(response.body);
+        final printers = responseData['printing']['results'] ?? [];
 
         if (printers.isNotEmpty) {
-          final List<String> printerIPs = printers
+          final printerIPs = printers
               .map<String>((printer) => printer['printer_ip'].toString())
               .toList();
 
-          final Map<String, dynamic> orderData = {
+          final printOrderData = {
             '_id': responseData['order']['id'],
+            'order_number': responseData['order']['order_number'],
+            'waiter_name': widget.user.firstName,
             'tableName': widget.tableName ?? 'N/A',
             'cart': _cart.map((item) => {
               'product': {'name': item.product.name},
@@ -1261,7 +1471,10 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
             }).toList(),
           };
 
-          await _printOrderToAllPrinters(orderData, printerIPs);
+          // Print ni background da bajaramiz
+          _printOrderToAllPrinters(printOrderData, printerIPs).catchError((e) {
+            print('Print xatoligi: $e');
+          });
         }
 
         _showSnackBar('Zakaz yaratildi!', AppColors.accent);
@@ -1279,8 +1492,21 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
+  // Optimized printing function
   Future<void> _printOrderToAllPrinters(Map<String, dynamic> orderData, List<String> printerIPs) async {
     const int port = 9100;
+
+    // Print data ni bir marta tayyorlaymiz
+    final printBytes = _preparePrintData(orderData);
+
+    // Parallel printing
+    final printFutures = printerIPs.map((printerIP) =>
+        _printToSinglePrinter(printerIP, port, printBytes));
+
+    await Future.wait(printFutures);
+  }
+
+  List<int> _preparePrintData(Map<String, dynamic> orderData) {
     List<int> bytes = [];
 
     // ESC/POS commands
@@ -1290,63 +1516,80 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     List<int> fontSize(int widthMultiplier, int heightMultiplier) =>
         [0x1D, 0x21, (widthMultiplier - 1) << 4 | (heightMultiplier - 1)];
     List<int> alignCenter() => [0x1B, 0x61, 0x01];
+    List<int> alignLeft() => [0x1B, 0x61, 0x00];
     List<int> cut() => [0x1D, 0x56, 0x00];
     List<int> feedLines(int n) => [0x1B, 0x64, n];
     List<int> selectCodePage(int page) => [0x1B, 0x74, page];
 
-    bytes += reset();
-    bytes += selectCodePage(17);
+    // Ma'lumotlar
+    final orderNumber = orderData['order_number'] ?? '0000';
+    final waiterName = orderData['waiter_name'] ?? 'No Name';
+    final tableName = orderData['tableName'] ?? 'N/A';
+    final cartItems = orderData['cart'] ?? [];
+    final dateTimeStr = DateTime.now().toString().substring(0, 19);
 
-    // Header
-    bytes += alignCenter();
-    bytes += fontSize(1, 1);
-    bytes += boldOn();
+    // Print content
+    bytes.addAll(reset());
+    bytes.addAll(selectCodePage(17));
+    bytes.addAll(alignCenter());
 
-    String tableName = orderData['tableName'] ?? 'N/A';
-    String headerText = 'Mahsulotlar - Stol: $tableName';
-    bytes += _encodeCP1251('$headerText\n');
-    bytes += boldOff();
-    bytes += _encodeCP1251('--------------------------------\n');
+    // Order Number
+    bytes.addAll(fontSize(2, 2));
+    bytes.addAll(boldOn());
+    bytes.addAll(_encodeCP1251('ZAKAZ №$orderNumber\n'));
+    bytes.addAll(boldOff());
+
+    // Date and time
+    bytes.addAll(fontSize(1, 1));
+    bytes.addAll(_encodeCP1251('$dateTimeStr\n'));
+    bytes.addAll(_encodeCP1251('Ofitsiant: $waiterName\n'));
+    bytes.addAll(_encodeCP1251('-------------------------------\n'));
 
     // Products header
-    bytes += fontSize(2, 1);
-    bytes += _encodeCP1251('Nomi'.padRight(16) + 'Soni\n');
-    bytes += _encodeCP1251('----------------------\n');
+    bytes.addAll(boldOn());
+    bytes.addAll(_encodeCP1251('MAHSULOTLAR\n'));
+    bytes.addAll(boldOff());
+    bytes.addAll(_encodeCP1251('Nomi                Soni\n'));
+    bytes.addAll(_encodeCP1251('-------------------------------\n'));
 
     // Products list
-    List<dynamic> cartItems = orderData['cart'] ?? [];
     for (var item in cartItems) {
       String name = item['product']['name'].toString();
       String quantity = '${item['quantity']}x';
-      name = name.length > 16 ? name.substring(0, 16) : name.padRight(16);
-      bytes += _encodeCP1251('$name$quantity\n');
+
+      if (name.length > 16) name = name.substring(0, 16);
+      name = name.padRight(20);
+
+      bytes.addAll(alignLeft());
+      bytes.addAll(_encodeCP1251('$name$quantity\n'));
     }
 
-    bytes += _encodeCP1251('--------------------\n');
-    bytes += feedLines(4);
-    bytes += cut();
+    bytes.addAll(_encodeCP1251('-------------------------------\n'));
+    bytes.addAll(alignCenter());
+    bytes.addAll(_encodeCP1251('Stol: $tableName\n'));
+    bytes.addAll(feedLines(4));
+    bytes.addAll(cut());
 
-    // Send to all printers
-    for (String printerIP in printerIPs) {
-      try {
-        Socket socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 3));
-        socket.add(bytes);
-        await socket.flush();
-        await socket.close();
-        print('✅ Print yuborildi: $printerIP');
-      } catch (e) {
-        print('Print error: $printerIP -> $e');
-      }
+    return bytes;
+  }
+
+  Future<void> _printToSinglePrinter(String printerIP, int port, List<int> bytes) async {
+    try {
+      final socket = await Socket.connect(printerIP, port,
+          timeout: const Duration(seconds: 2));
+      socket.add(bytes);
+      await socket.flush();
+      await socket.close();
+      print('✅ Print yuborildi: $printerIP');
+    } catch (e) {
+      print('❌ Print xato: $printerIP -> $e');
     }
   }
 
   List<int> _encodeCP1251(String text) {
-    const cpMap = {
-      0x0401: 0xA8, // Ё
-      0x0451: 0xB8, // ё
-    };
+    const cpMap = {0x0401: 0xA8, 0x0451: 0xB8};
+    final encoded = <int>[];
 
-    List<int> encoded = [];
     for (var rune in text.runes) {
       if (rune >= 0x0410 && rune <= 0x042F) {
         encoded.add(rune - 0x0410 + 0xC0);
@@ -1364,6 +1607,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   }
 
   void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: const TextStyle(color: Colors.white)),
@@ -1382,7 +1626,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     final isTablet = screenWidth >= 600 && screenWidth <= 1200;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -1463,7 +1707,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     return Container(
       margin: const EdgeInsets.only(left: 16),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -1524,9 +1768,72 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
               itemCount: _categories.length,
               itemBuilder: (context, index) {
                 final category = _categories[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildCategoryButton(category, isDesktop),
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(
+                      color: _selectedCategoryId == category.id
+                          ? AppColors.primary
+                          : AppColors.lightGrey,
+                      width: _selectedCategoryId == category.id ? 2 : 1,
+                    ),
+                  ),
+                  child: ExpansionTile(
+                    leading: Icon(
+                      _getCategoryIcon(category.title),
+                      size: 18,
+                      color: _selectedCategoryId == category.id
+                          ? AppColors.primary
+                          : AppColors.grey,
+                    ),
+                    title: Text(
+                      category.title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _selectedCategoryId == category.id
+                            ? AppColors.primary
+                            : AppColors.grey,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onExpansionChanged: (expanded) {
+                      if (expanded) {
+                        _selectCategory(category.id, category.title);
+                      }
+                    },
+                    children: category.subcategories.map((subcategory) {
+                      final bool isSubcategorySelected =
+                          _selectedCategoryId == category.id &&
+                              _selectedSubcategory == subcategory;
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        title: Text(
+                          subcategory,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSubcategorySelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: isSubcategorySelected
+                                ? AppColors.primary
+                                : AppColors.grey,
+                          ),
+                        ),
+                        onTap: () {
+                          _selectCategory(
+                            category.id,
+                            category.title,
+                            subcategory: subcategory,
+                          );
+                        },
+                      );
+                    }).toList(),
+                  ),
                 );
               },
             ),
@@ -1540,7 +1847,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     return Container(
       margin: const EdgeInsets.only(right: 16),
       decoration: BoxDecoration(
-        color: AppColors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: const [
           BoxShadow(
@@ -1562,13 +1869,15 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                 topRight: Radius.circular(12),
               ),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.restaurant_menu, color: AppColors.white, size: 20),
-                SizedBox(width: 8),
+                const Icon(Icons.restaurant_menu, color: AppColors.white, size: 20),
+                const SizedBox(width: 8),
                 Text(
-                  'Mahsulotlar',
-                  style: TextStyle(
+                  _selectedCategoryName.isNotEmpty
+                      ? '$_selectedCategoryName${_selectedSubcategory != null ? " ($_selectedSubcategory)" : " (Barchasi)"}'
+                      : 'Mahsulotlar',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: AppColors.white,
@@ -1600,10 +1909,10 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
               )
                   : GridView.builder(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isDesktop ? 4 : (isTablet ? 3 : 2),
-                  childAspectRatio: 1.2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
+                  crossAxisCount: isDesktop ? 5 : (isTablet ? 4 : 3),
+                  childAspectRatio: 1.5,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
                 ),
                 itemCount: _filteredProducts.length,
                 itemBuilder: (context, index) {
@@ -1618,46 +1927,6 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 
-  Widget _buildCategoryButton(Category category, bool isDesktop) {
-    final bool isSelected = _selectedCategoryId == category.id;
-    return SizedBox(
-      height: isDesktop ? 48 : 44,
-      child: ElevatedButton(
-        onPressed: () => _selectCategory(category.id, category.title),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isSelected ? AppColors.primary : AppColors.white,
-          foregroundColor: isSelected ? AppColors.white : AppColors.primary,
-          side: BorderSide(
-            color: isSelected ? AppColors.primary : AppColors.lightGrey,
-            width: 1,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            Icon(
-              _getCategoryIcon(category.title),
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                category.title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildProductCard(Ovqat product, bool isDesktop) {
     final int quantityInCart = _getQuantityInCart(product);
     final double totalPrice = product.price * quantityInCart;
@@ -1666,10 +1935,10 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       onTap: () => _addToCart(product),
       child: Container(
         decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: quantityInCart > 0 ? AppColors.primary : AppColors.lightGrey,
+            color: quantityInCart > 0 ? AppColors.primary : Colors.grey[300]!,
             width: quantityInCart > 0 ? 2 : 1,
           ),
           boxShadow: quantityInCart > 0
@@ -1677,29 +1946,29 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
             BoxShadow(
               color: AppColors.primary.withOpacity(0.1),
               offset: const Offset(0, 2),
-              blurRadius: 8,
+              blurRadius: 4,
             )
           ]
               : null,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(6),
               decoration: const BoxDecoration(
                 color: AppColors.primary,
                 borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(9),
-                  topRight: Radius.circular(9),
+                  topLeft: Radius.circular(7),
+                  topRight: Radius.circular(7),
                 ),
               ),
               child: Text(
-                '${_currencyFormatter.format(product.price)} soʻm',
+                '${_currencyFormatter.format(product.price)} so\'m',
                 style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.white,
+                  fontSize: 10,
+                  color: Colors.white,
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
@@ -1708,13 +1977,13 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
             Expanded(
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(4),
                 child: Text(
                   product.name,
                   style: const TextStyle(
-                    fontSize: 25,
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: Colors.black87,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -1725,11 +1994,12 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
             if (quantityInCart > 0)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                color: AppColors.accent.withOpacity(0.1),
                 child: Text(
-                  'Jami: ${_currencyFormatter.format(totalPrice)} soʻm',
+                  'Jami: ${_currencyFormatter.format(totalPrice)} so\'m',
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 8,
                     color: AppColors.accent,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1738,7 +2008,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
               ),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(2),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1751,39 +2021,39 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                         );
                       },
                       child: Container(
-                        width: 28,
-                        height: 28,
+                        width: 20,
+                        height: 20,
                         decoration: BoxDecoration(
                           color: AppColors.error,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.remove, size: 16, color: AppColors.white),
+                        child: const Icon(Icons.remove, size: 12, color: Colors.white),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                       child: Text(
                         '$quantityInCart',
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
+                          color: Colors.black87,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 2),
                   ],
                   GestureDetector(
                     onTap: () => _addToCart(product),
                     child: Container(
-                      width: 28,
-                      height: 28,
+                      width: 20,
+                      height: 20,
                       decoration: BoxDecoration(
                         color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.add, size: 16, color: AppColors.white),
+                      child: const Icon(Icons.add, size: 12, color: Colors.white),
                     ),
                   ),
                 ],
@@ -1802,7 +2072,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
-        color: AppColors.white,
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
             color: Color(0x0A000000),
@@ -1844,14 +2114,14 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
                   : const Icon(Icons.restaurant_menu, size: 18),
               label: Text(
                 _isSubmitting
                     ? 'Yuklanmoqda...'
-                    : 'Zakaz berish (${_currencyFormatter.format(total)} soʻm)',
+                    : 'Zakaz berish (${_currencyFormatter.format(total)} so\'m)',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -1861,7 +2131,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                 backgroundColor: (isCartEmpty || _isSubmitting)
                     ? AppColors.grey
                     : AppColors.primary,
-                foregroundColor: AppColors.white,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1872,5 +2142,17 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         ],
       ),
     );
+  }
+
+  // Cache ni tozalash uchun static method
+  static void clearCache() {
+    _cachedCategories = null;
+    _cachedProducts = null;
+    _lastCacheTime = null;
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 }

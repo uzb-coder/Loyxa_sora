@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../Model/Ovqat_model.dart';
 
 class OvqatController {
-  final String baseUrl = "https://sora-b.vercel.app/api";
+  static const String baseUrl = "https://sorab.richman.uz/api";
   final String token =
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 

@@ -1,3 +1,21 @@
+class Subcategory {
+  final String title;
+
+  Subcategory({required this.title});
+
+  factory Subcategory.fromJson(Map<String, dynamic> json) {
+    return Subcategory(
+      title: json['title'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+    };
+  }
+}
+
 class Ovqat {
   final String id;
   final String name;
@@ -6,6 +24,7 @@ class Ovqat {
   final String categoryName;
   final String? description;
   final String? image;
+  final List<Subcategory> subcategories;
 
   Ovqat({
     required this.id,
@@ -15,9 +34,13 @@ class Ovqat {
     required this.categoryName,
     this.description,
     this.image,
+    required this.subcategories,
   });
 
   factory Ovqat.fromJson(Map<String, dynamic> json) {
+    var subcategoriesJson = json['subcategories'] as List<dynamic>? ?? [];
+    List<Subcategory> subcategoriesList = subcategoriesJson.map((e) => Subcategory.fromJson(e)).toList();
+
     return Ovqat(
       id: json['_id'] ?? '',
       name: json['name'] ?? '',
@@ -26,6 +49,7 @@ class Ovqat {
       categoryName: json['category']?['title'] ?? json['category_name'] ?? '',
       description: json['description'],
       image: json['image'],
+      subcategories: subcategoriesList,
     );
   }
 
@@ -37,6 +61,7 @@ class Ovqat {
       'category': {'_id': categoryId, 'title': categoryName},
       'description': description,
       'image': image,
+      'subcategories': subcategories.map((e) => e.toJson()).toList(),
     };
   }
 }

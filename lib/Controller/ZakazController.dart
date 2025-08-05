@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class Zakazcontroller {
-  final String baseUrl = "https://sora-b.vercel.app/api";
+  static const String baseUrl = "https://sorab.richman.uz/api";
 
 
   final String token =

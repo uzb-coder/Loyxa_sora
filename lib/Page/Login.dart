@@ -7,7 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'dart:async';
 
 import '../Controller/usersCOntroller.dart';
-import '../Example.dart';
+import 'Example.dart';
+import '../Kassir/Page/Home.dart';
 import 'Home.dart';
 import 'Users_page.dart';
 
@@ -56,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  final String baseUrl = "https://sora-b.vercel.app/api";
+  static const String baseUrl = "https://sorab.richman.uz/api";
 
   String? _errorMessage;
 
@@ -64,50 +65,79 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     final pin = _pinController.text.trim();
 
+    print("Kiritilgan userCode: ${widget.user.userCode}");
+    print("Kiritilgan PIN: $pin");
+
     if (widget.user.userCode.isEmpty || pin.isEmpty) {
       setState(() {
         _errorMessage = "Iltimos, barcha maydonlarni to'ldiring.";
       });
+      print("Xato: UserCode yoki PIN bo‘sh.");
       return;
     }
 
     try {
       final loginUrl = Uri.parse('$baseUrl/auth/login');
+      print("API POST so‘rov yuborilmoqda: $loginUrl");
+
       final response = await http.post(
         loginUrl,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_code': widget.user.userCode, 'password': pin}),
+        body: jsonEncode({
+          'user_code': widget.user.userCode,
+          'password': pin,
+        }),
       );
+
+      print("API Javobi Status Code: ${response.statusCode}");
+      print("API Javobi Body: ${response.body}");
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final role = data['role'];
         final token = data['token'];
+
         print("Token: $token");
+        print("User Role: $role");
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Muvaffaqiyatli kirdingiz!')),
         );
 
-        // Token ni PosScreen ga uzatish:
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PosScreen(user: widget.user,),
-          ),
-        );
+        if (role == 'afitsant') {
+          print("Navigatsiya: PosScreen ga o‘tmoqda.");
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => PosScreen(user: widget.user)),
+          );
+        } else if (role == 'kassir') {
+          print("Navigatsiya: KassrPage ga o‘tmoqda.");
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => KassrPage(user: widget.user)),
+          );
+        } else {
+          setState(() {
+            _errorMessage = "Noma'lum rol: $role";
+          });
+        }
       }
       else {
-        final error = jsonDecode(response.body);
         setState(() {
-          _errorMessage = error['message'] ?? 'Login amalga oshmadi.';
+          _errorMessage = 'Login amalga oshmadi: ${response.statusCode}';
         });
       }
     } catch (e) {
+      print("Xatolik: $e");
       setState(() {
         _errorMessage = 'Xatolik yuz berdi: $e';
       });
     }
   }
+
+
+
+
 
 
   @override

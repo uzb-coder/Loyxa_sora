@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 
 class AuthService {
-  static const String baseUrl = "https://sora-b.vercel.app/api";
+  static const String baseUrl = "https://sorab.richman.uz/api";
   static const String userCode = "9090034564";
   static const String password = "0000";
 

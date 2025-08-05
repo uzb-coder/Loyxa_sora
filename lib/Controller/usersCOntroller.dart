@@ -40,7 +40,7 @@ class User {
 
 
 class AuthService {
-  static const String baseUrl = "https://sora-b.vercel.app/api";
+  static const String baseUrl = "https://sorab.richman.uz/api";
   static const String userCode = "123";
   static const String password = "1";
 
@@ -92,21 +92,19 @@ class AuthService {
 
 
 class UserController {
- static  final String baseUrl = "https://sora-b.vercel.app/api";
+  static const String baseUrl = "https://sorab.richman.uz/api";
 
  static Future<List<User>> getAllUsers() async {
-
-   final String? token = await AuthService.getToken(); // Tokenni shu yerda olamiz
 
    final response = await http.get(
      Uri.parse('$baseUrl/users'),
      headers: {
-       'Authorization': 'Bearer $token',
        'Content-Type': 'application/json',
      },
    );
 
    if (response.statusCode == 200) {
+     print(response.body);
      print(response.body);
      final List<dynamic> jsonList = json.decode(response.body);
      return jsonList.map((json) => User.fromJson(json)).toList();

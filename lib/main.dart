@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart'; // <-- MUHIM O'ZGARISH
 import 'package:intl/intl.dart';
 
-import 'Categorya.dart';
-import 'Example.dart';
+import 'Page/Categorya.dart';
+import 'Page/Example.dart';
 import 'Page/Home.dart';
 import 'Page/Login.dart';
 import 'Page/Users_page.dart';

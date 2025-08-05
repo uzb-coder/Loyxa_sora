@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'Controller/Categorya_Controller.dart';
-import 'Model/Categorya_Model.dart';
+import '../Controller/Categorya_Controller.dart';
+import '../Model/Categorya_Model.dart';
 
 class CategoryPage extends StatefulWidget {
   const CategoryPage({super.key});
@@ -41,12 +41,19 @@ class _CategoryPageState extends State<CategoryPage> {
               final category = categories[index];
               return Card(
                 margin: const EdgeInsets.all(8),
-                child: ListTile(
+                child: ExpansionTile(
                   title: Text(category.title),
-                  subtitle: Text(
-                        "Subkategoriyalar: ${category.subcategories.join(", ")}",
-                  ),
-
+                  children: category.subcategories.map((subcategory) {
+                    return ListTile(
+                      title: Text(subcategory),
+                      onTap: () {
+                        // Subkategoriya bosilganda nima bo'lishini shu yerda yozasiz
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('$subcategory bosildi')),
+                        );
+                      },
+                    );
+                  }).toList(),
                 ),
               );
             },
