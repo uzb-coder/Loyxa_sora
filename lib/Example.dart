@@ -1,201 +1,131 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:ffi';
+import 'dart:io';
+import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
-class OrderItem {
-  final String name;
-  final int price;
-  final int quantity;
+import 'package:image/image.dart' as img;
+import 'package:win32/win32.dart';
 
-  OrderItem({
-    required this.name,
-    required this.price,
-    required this.quantity,
-  });
+class Xp80cPrinterScreen extends StatelessWidget {
+  const Xp80cPrinterScreen({super.key});
 
-  factory OrderItem.fromJson(Map<String, dynamic> json) {
-    return OrderItem(
-      name: json['name'],
-      price: json['price'],
-      quantity: json['quantity'],
-    );
-  }
-}
+  Future<List<int>> loadLogoBytes() async {
+    // LOGO PNG faylini o‘qing (assets/images/logo.png deb olaylik)
+    final file = File('rasm/sara.png'); // <-- Yo‘lini to‘g‘rilang
+    final bytes = await file.readAsBytes();
+    final image = img.decodeImage(bytes)!;
 
-class Order {
-  final String id;
-  final String tableName;
-  final String userFullName;
-  final String status;
-  final int totalPrice;
-  final int finalTotal;
-  final List<OrderItem> items;
+    // ESC/POS formatiga bitmap yasash (mono B/W)
+    List<int> escPosLogo = [];
 
-  Order({
-    required this.id,
-    required this.tableName,
-    required this.userFullName,
-    required this.status,
-    required this.totalPrice,
-    required this.finalTotal,
-    required this.items,
-  });
+    final width = (image.width + 7) ~/ 8 * 8; // 8 pixel align
+    final height = image.height;
 
-  factory Order.fromJson(Map<String, dynamic> json) {
-    final table = json['table_id'];
-    final user = json['user_id'];
-    final itemsJson = json['items'] as List;
+    // Bit Image Mode Command: GS v 0
+    escPosLogo.addAll([0x1D, 0x76, 0x30, 0x00]); // Raster bit image mode
+    escPosLogo.addAll([width ~/ 8, 0x00, height % 256, height ~/ 256]);
 
-    return Order(
-      id: json['_id'],
-      tableName: table != null ? table['display_name'] ?? '' : '',
-      userFullName: user != null ? '${user['first_name']} ${user['last_name']}' : '',
-      status: json['status'],
-      totalPrice: json['total_price'],
-      finalTotal: json['final_total'],
-      items: itemsJson.map((item) => OrderItem.fromJson(item)).toList(),
-    );
-  }
-}
-
-
-class OrderController {
-  final String baseUrl = "https://sora-b.vercel.app/api";
-  final String token =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
-
-  // Pending ordersni olish
-  Future<List<Order>> getMyPendingOrders() async {
-    final url = Uri.parse('$baseUrl/orders/my-pending');
-    print('📤 GET: $url');
-    final response = await http.get(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    print('📥 Status: ${response.statusCode}');
-    print('📥 Body: ${response.body}');
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final List ordersJson = data['orders'];
-      return ordersJson.map((json) => Order.fromJson(json)).toList();
-    } else {
-      throw Exception('Failed to load pending orders');
-    }
-  }
-
-  // Process Payment (Zakazni yopish)
-  Future<bool> processPayment(String orderId) async {
-    final url = Uri.parse('$baseUrl/orders/process-payment/$orderId');
-    print('📤 POST: $url');
-    final response = await http.post(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    print('📥 Status: ${response.statusCode}');
-    print('📥 Body: ${response.body}');
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['success'] == true;
-    } else {
-      throw Exception('Failed to process payment');
-    }
-  }
-}
-
-class MyPendingOrdersPage extends StatefulWidget {
-  @override
-  _MyPendingOrdersPageState createState() => _MyPendingOrdersPageState();
-}
-class _MyPendingOrdersPageState extends State<MyPendingOrdersPage> {
-  final OrderController _orderController = OrderController();
-  late Future<List<Order>> _pendingOrders;
-
-  @override
-  void initState() {
-    super.initState();
-    _pendingOrders = _orderController.getMyPendingOrders();
-  }
-
-  Future<void> _processPayment(String orderId) async {
-    try {
-      final success = await _orderController.processPayment(orderId);
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ Order Processed Successfully')),
-        );
-        setState(() {
-          _pendingOrders = _orderController.getMyPendingOrders(); // Refresh list
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Failed to process order')),
-        );
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x += 8) {
+        int byte = 0;
+        for (int b = 0; b < 8; b++) {
+          int pxX = x + b;
+          if (pxX >= image.width) continue;
+          int pixel = image.getPixel(pxX, y);
+          int luminance = img.getLuminance(pixel);
+          if (luminance < 128) {
+            byte |= (1 << (7 - b));
+          }
+        }
+        escPosLogo.add(byte);
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Error: $e')),
-      );
     }
+
+    return escPosLogo;
+  }
+
+  Future<void> printToXp80c() async {
+    const printerName = 'XP-80C';
+    final hPrinter = calloc<HANDLE>();
+    final docInfo = calloc<DOC_INFO_1>();
+
+    docInfo.ref.pDocName = TEXT('Flutter Check Print');
+    docInfo.ref.pOutputFile = nullptr;
+    docInfo.ref.pDatatype = TEXT('RAW');
+
+    final openResult = OpenPrinter(TEXT(printerName), hPrinter, nullptr);
+    if (openResult == 0) {
+      print('❌ Printer topilmadi: $printerName');
+      calloc.free(hPrinter);
+      calloc.free(docInfo);
+      return;
+    }
+
+    final jobId = StartDocPrinter(hPrinter.value, 1, docInfo.cast());
+    if (jobId == 0) {
+      print('❌ Print Job boshlashda xato.');
+      ClosePrinter(hPrinter.value);
+      calloc.free(hPrinter);
+      calloc.free(docInfo);
+      return;
+    }
+
+    StartPagePrinter(hPrinter.value);
+
+    // LOGO rasmini yuklash
+    final logoBytes = await loadLogoBytes();
+
+    // Chek matni
+    final List<int> escPosData = <int>[
+      0x1B, 0x40,  // Initialize printer
+      ...logoBytes, // <-- LOGO bitmap qo‘shildi
+      0x1B, 0x64, 0x02,  // Feed 2 lines
+      0x1B, 0x21, 0x30,  // Double Width & Height
+      0x1B, 0x61, 0x01,  // Center align
+      ...'FLUTTER CHEK PRINT\n'.codeUnits,
+      0x1B, 0x21, 0x00,  // Normal font
+      0x1B, 0x61, 0x00,  // Left align
+      ...'-----------------------------\n'.codeUnits,
+      ...'Mahsulot 1  2 x 10,000 = 20,000\n'.codeUnits,
+      ...'Mahsulot 2  1 x 15,000 = 15,000\n'.codeUnits,
+      ...'-----------------------------\n'.codeUnits,
+      0x1B, 0x21, 0x20,  // Double Height for total
+      ...'JAMI:             35,000 UZS\n'.codeUnits,
+      0x1B, 0x64, 0x06,  // Feed 6 lines
+      0x1D, 0x56, 0x00   // Full cut
+    ];
+
+    final bytesPointer = calloc<Uint8>(escPosData.length);
+    final bytesList = bytesPointer.asTypedList(escPosData.length);
+    bytesList.setAll(0, escPosData);
+
+    final bytesWritten = calloc<DWORD>();
+    final success = WritePrinter(hPrinter.value, bytesPointer, escPosData.length, bytesWritten);
+
+    if (success == 0) {
+      print('❌ Ma\'lumot yuborishda xato.');
+    } else {
+      print('✅ Chek muvaffaqiyatli yuborildi (logo bilan).');
+    }
+
+    EndPagePrinter(hPrinter.value);
+    EndDocPrinter(hPrinter.value);
+    ClosePrinter(hPrinter.value);
+
+    calloc.free(bytesPointer);
+    calloc.free(bytesWritten);
+    calloc.free(hPrinter);
+    calloc.free(docInfo);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('My Pending Orders'),
-      ),
-      body: FutureBuilder<List<Order>>(
-        future: _pendingOrders,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(child: Text('No pending orders.'));
-          } else {
-            final orders = snapshot.data!;
-            return ListView.builder(
-              itemCount: orders.length,
-              itemBuilder: (context, index) {
-                final order = orders[index];
-                return Card(
-                  margin: EdgeInsets.all(8),
-                  child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Order ID: ${order.id}', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('Table: ${order.tableName}'),
-                        Text('User: ${order.userFullName}'),
-                        Text('Status: ${order.status}'),
-                        SizedBox(height: 8),
-                        Text('Items:', style: TextStyle(decoration: TextDecoration.underline)),
-                        ...order.items.map((item) => Text('${item.name} - ${item.quantity} x ${item.price} UZS')),
-                        Divider(),
-                        Text('Final Total: ${order.finalTotal} UZS', style: TextStyle(fontWeight: FontWeight.bold)),
-                        SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: () => _processPayment(order.id),
-                          child: Text('Process Payment'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
-          }
-        },
+      appBar: AppBar(title: const Text('XP-80C Printer Test')),
+      body: Center(
+        child: ElevatedButton(
+          onPressed: printToXp80c,
+          child: const Text('Chek (logo bilan) chiqarish'),
+        ),
       ),
     );
   }

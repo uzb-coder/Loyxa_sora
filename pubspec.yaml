@@ -43,6 +43,11 @@ dependencies:
   path_provider: ^2.0.15
   typed_data: ^1.4.0
   image: ^3.3.0
+  charset_converter: ^2.3.0
+  esc_pos_utils_plus: ^2.0.1+6
+  screenshot: ^3.0.0
+  enough_convert: ^1.6.0
+  usb_serial: ^0.5.2
 
 dev_dependencies:
   flutter_test:
