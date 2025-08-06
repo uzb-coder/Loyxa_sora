@@ -13,7 +13,6 @@ import '../Controller/StolController.dart';
 import '../Controller/OvqatCOntroller.dart';
 import '../Controller/ZakazController.dart';
 import '../Controller/usersCOntroller.dart';
-import 'Example.dart';
 import '../Model/Categorya_Model.dart';
 import '../Model/Ovqat_model.dart';
 import '../Model/StolModel.dart';
@@ -1199,6 +1198,7 @@ class _PosScreenState extends State<PosScreen> {
 }
 
 // Semaphore class for limiting concurrent requests
+
 class Semaphore {
   int _permits;
   final Queue<Completer<void>> _waitQueue = Queue<Completer<void>>();

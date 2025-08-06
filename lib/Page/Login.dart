@@ -3,11 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:intl/date_symbol_data_local.dart';
 import 'dart:async';
-
 import '../Controller/usersCOntroller.dart';
-import 'Example.dart';
 import '../Kassir/Page/Home.dart';
 import 'Home.dart';
 import 'Users_page.dart';
@@ -100,10 +97,6 @@ class _LoginScreenState extends State<LoginScreen> {
         print("Token: $token");
         print("User Role: $role");
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Muvaffaqiyatli kirdingiz!')),
-        );
-
         if (role == 'afitsant') {
           print("Navigatsiya: PosScreen ga o‘tmoqda.");
           Navigator.pushReplacement(
@@ -114,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
           print("Navigatsiya: KassrPage ga o‘tmoqda.");
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => KassrPage(user: widget.user)),
+            MaterialPageRoute(builder: (_) => KassirPage()),
           );
         } else {
           setState(() {

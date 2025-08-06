@@ -1,11 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart'; // <-- MUHIM O'ZGARISH
-import 'package:intl/intl.dart';
-
-import 'Page/Categorya.dart';
-import 'Page/Example.dart';
-import 'Page/Home.dart';
-import 'Page/Login.dart';
 import 'Page/Users_page.dart';
 
 void main() async { // <-- MUHIM O'ZGARISH
@@ -14,7 +8,6 @@ void main() async { // <-- MUHIM O'ZGARISH
   runApp(const MyApp());
 }
 
-// Asosiy ilova vidjeti
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
