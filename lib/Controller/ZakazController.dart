@@ -1,17 +1,20 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Zakazcontroller {
   static const String baseUrl = "https://sorab.richman.uz/api";
 
 
-  final String token =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 
   Future<bool> closeOrder(String orderId) async {
     const String apiUrl = "https://sora-b.vercel.app/api/orders/close/";
-    final String token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token'); // 🧠 tokenni olish
 
+    if (token == null) {
+      throw Exception("Token topilmadi! Iltimos, qayta login qiling.");
+    }
     try {
       final response = await http.put(
         Uri.parse("$apiUrl$orderId"),

@@ -7,7 +7,7 @@ import 'Kassr_page.dart';
 import 'Ochiq_Zakaz.dart';
 
 class KassirPage extends StatefulWidget {
-  const KassirPage({super.key});
+  const KassirPage({super.key, required token});
 
   @override
   _KassirPageState createState() => _KassirPageState();
@@ -176,7 +176,7 @@ class _KassirPageState extends State<KassirPage> {
                     _buildButton(
                       label: 'Все счета',
                       onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => PendingPaymentsPage()));
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => UnifiedPendingPaymentsPage()));
                       },
                     ),
                   ],

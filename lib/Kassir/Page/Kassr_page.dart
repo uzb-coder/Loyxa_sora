@@ -56,7 +56,7 @@ class PendingOrder {
           'name': item['name'] ?? 'N/A',
           'quantity': item['quantity'] ?? 0,
           'price': item['price'] ?? 0,
-          'printer_ip': item['printer_ip'] ?? null, // Ensure printer_ip is included
+          'printer_ip': item['printer_ip'] ?? null,
         };
       }).toList() ??
           [],
@@ -81,6 +81,7 @@ class PendingOrder {
     };
   }
 }
+
 class MixedPaymentDetails {
   final Breakdown breakdown;
   final double cashAmount;
@@ -199,7 +200,7 @@ class ApiService {
 
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/orders/my-pending'), // Aligned with PendingOrdersPage
+        Uri.parse('$baseUrl/orders/my-pending'),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/json',
@@ -221,7 +222,7 @@ class ApiService {
     }
   }
 
-  Future<List<PendingOrder>> fetchProcessPaymentOrders() async {
+  Future<List<PendingOrder>> fetchClosedOrders() async {
     if (_token == null) {
       final success = await authenticate();
       if (!success) return [];
@@ -229,7 +230,7 @@ class ApiService {
 
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/orders/process-payment'),
+        Uri.parse('$baseUrl/orders/pending-payments'),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/json',
@@ -238,8 +239,8 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data is Map && data['orders'] is List) {
-          return (data['orders'] as List)
+        if (data is Map && data['pending_orders'] is List) {
+          return (data['pending_orders'] as List)
               .map((orderJson) => PendingOrder.fromJson(orderJson))
               .toList();
         } else if (data is List) {
@@ -260,7 +261,7 @@ class ApiService {
     }
 
     try {
-      final response = await http.put( // Changed to PUT to match PendingOrdersPage
+      final response = await http.put(
         Uri.parse('$baseUrl/orders/close/$orderId'),
         headers: {
           'Authorization': 'Bearer $_token',
@@ -287,8 +288,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> processPayment(
-      String orderId, Map<String, dynamic> paymentData) async {
+  Future<Map<String, dynamic>> processPayment(String orderId, Map<String, dynamic> paymentData) async {
     if (_token == null) {
       final success = await authenticate();
       if (!success) return {'success': false, 'message': 'Authentication failed'};
@@ -296,7 +296,7 @@ class ApiService {
 
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/orders/process-payment/$orderId'),
+        Uri.parse('$baseUrl/kassir/payment/$orderId'),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/json',
@@ -304,7 +304,7 @@ class ApiService {
         body: jsonEncode(paymentData),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         return {
           'success': true,
@@ -326,14 +326,14 @@ class ApiService {
   }
 }
 
-class PendingPaymentsPage extends StatefulWidget {
-  const PendingPaymentsPage({super.key});
+class UnifiedPendingPaymentsPage extends StatefulWidget {
+  const UnifiedPendingPaymentsPage({super.key});
 
   @override
-  _PendingPaymentsPageState createState() => _PendingPaymentsPageState();
+  _UnifiedPendingPaymentsPageState createState() => _UnifiedPendingPaymentsPageState();
 }
 
-class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
+class _UnifiedPendingPaymentsPageState extends State<UnifiedPendingPaymentsPage> {
   final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   String selectedDateRange = "open";
   String searchText = "";
@@ -359,13 +359,13 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
 
     try {
       final pendingOrders = await apiService.fetchPendingOrders();
-      final processOrders = await apiService.fetchProcessPaymentOrders();
+      final closedOrdersData = await apiService.fetchClosedOrders();
 
       setState(() {
         openOrders = pendingOrders;
-        closedOrders = processOrders;
+        closedOrders = closedOrdersData;
         isLoading = false;
-        if (pendingOrders.isEmpty && processOrders.isEmpty) {
+        if (pendingOrders.isEmpty && closedOrdersData.isEmpty) {
           errorMessage = 'No orders found from API';
         }
       });
@@ -384,15 +384,15 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
     });
   }
 
-    void handlePrintReceipt() {
-      if (selectedOrder == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Avval zakazni tanlang!"), duration: Duration(seconds: 3)),
-        );
-        return;
-      }
-      print("Printing receipt for order ${selectedOrder!.formattedOrderNumber}");
+  void handlePrintReceipt() {
+    if (selectedOrder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Avval zakazni tanlang!"), duration: Duration(seconds: 3)),
+      );
+      return;
     }
+    print("Printing receipt for order ${selectedOrder!.formattedOrderNumber}");
+  }
 
   void handleCloseOrder(int index) async {
     if (selectedOrder == null) {
@@ -446,7 +446,18 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
     setState(() {
       isLoading = true;
     });
-    final result = await apiService.processPayment(apiPayload['orderId'], apiPayload['paymentData']);
+
+    Map<String, dynamic> paymentData = {
+      'orderId': selectedOrder?.id?.toString() ?? '',
+    };
+
+    if (apiPayload['paymentData'] != null && apiPayload['paymentData'] is Map) {
+      (apiPayload['paymentData'] as Map).forEach((key, value) {
+        paymentData[key.toString()] = value;
+      });
+    }
+
+    final result = await apiService.processPayment(selectedOrder?.id ?? '', paymentData);
     setState(() {
       isLoading = false;
     });
@@ -455,14 +466,25 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
 
   void handlePaymentSuccess(Map<String, dynamic> result) {
     if (selectedOrder != null) {
+      final index = closedOrders.indexWhere((order) => order.id == selectedOrder!.id);
+      if (index != -1) {
+        closedOrders.removeAt(index);
+        _listKey.currentState?.removeItem(
+          index,
+              (context, animation) => _buildOrderCard(closedOrders[index], index, animation),
+          duration: Duration(milliseconds: 300),
+        );
+      }
       setState(() {
-        closedOrders.removeWhere((order) => order.id == selectedOrder!.id);
         selectedOrder = null;
         isPaymentModalVisible = false;
       });
-    }
-    _fetchData();
-  }
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('To\'lov muvaffaqiyatli qabul qilindi!')),
+          );
+          }
+              _fetchData();
+      }
 
   List<PendingOrder> getCurrentData() {
     List<PendingOrder> currentData = selectedDateRange == "open" ? openOrders : closedOrders;
@@ -514,80 +536,123 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
             border: isSelected ? Border.all(color: const Color(0xFF28a745), width: 2) : null,
           ),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: Row(
+          child: selectedDateRange == "open"
+              ? _buildOpenOrderRow(order)
+              : _buildClosedOrderRow(order),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOpenOrderRow(PendingOrder order) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Column(
             children: [
-              SizedBox(
-                width: 100,
-                child: Column(
-                  children: [
-                    Text(
-                      DateFormat('dd.MM').format(DateTime.parse(order.createdAt)),
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                    Text(
-                      DateFormat('HH:mm').format(DateTime.parse(order.createdAt)),
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                  ],
-                ),
+              Text(
+                DateFormat('dd.MM').format(DateTime.parse(order.createdAt)),
+                style: const TextStyle(fontSize: 18),
               ),
-              SizedBox(
-                width: 80,
-                child: Text(
-                  order.formattedOrderNumber ?? order.orderNumber,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: selectedDateRange == "closed" ? const Color(0xFFdc3545) : Colors.black,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              SizedBox(
-                width: 150,
-                child: Text(
-                  order.waiterName ?? "N/A",
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              SizedBox(
-                width: 100,
-                child: Text(
-                  "Stol: ${order.tableName}",
-                  style: const TextStyle(fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              SizedBox(
-                width: 120,
-                child: Text(
-                  NumberFormat().format(order.totalPrice),
-                  style: const TextStyle(fontSize: 19),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              SizedBox(
-                width: 120,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      NumberFormat().format(order.totalPrice),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                        color: _getStatusColor(order),
-                      ),
-                    ),
-                    Text(
-                      _getStatusText(order),
-                      style: const TextStyle(fontSize: 9, color: Colors.grey),
-                    ),
-                  ],
-                ),
+              Text(
+                DateFormat('HH:mm').format(DateTime.parse(order.createdAt)),
+                style: const TextStyle(fontSize: 18),
               ),
             ],
           ),
         ),
+        SizedBox(
+          width: 80,
+          child: Text(
+            order.formattedOrderNumber ?? order.orderNumber,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        SizedBox(
+          width: 150,
+          child: Text(
+            order.waiterName ?? "N/A",
+            textAlign: TextAlign.center,
+          ),
+        ),
+        SizedBox(
+          width: 100,
+          child: Text(
+            "Stol: ${order.tableName}",
+            style: const TextStyle(fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        SizedBox(
+          width: 120,
+          child: Text(
+            NumberFormat().format(order.totalPrice),
+            style: const TextStyle(fontSize: 19),
+            textAlign: TextAlign.right,
+          ),
+        ),
+        SizedBox(
+          width: 120,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                NumberFormat().format(order.totalPrice),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  color: _getStatusColor(order),
+                ),
+              ),
+              Text(
+                _getStatusText(order),
+                style: const TextStyle(fontSize: 9, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClosedOrderRow(PendingOrder order) {
+    return Row(
+      children: [
+        _buildDataCell(
+          DateFormat('dd.MM HH:mm').format(DateTime.parse(order.createdAt)),
+          flex: 2,
+        ),
+        _buildDataCell(order.orderNumber.toString(), flex: 2),
+        _buildDataCell(order.tableName.toString(), flex: 1),
+        _buildDataCell(order.waiterName.toString(), flex: 2),
+        _buildDataCell(order.items.length.toString(), flex: 1),
+        _buildDataCell(
+          NumberFormat.currency(decimalDigits: 0, symbol: '').format(order.totalPrice) + " so'm",
+          flex: 2,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDataCell(String text, {int flex = 1}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(String text, {int flex = 1}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -633,6 +698,11 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
               );
             }).toList(),
           ],
+          const SizedBox(height: 12),
+          Text(
+            "Jami: ${NumberFormat().format(selectedOrder!.totalPrice)} so'm",
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
+          ),
           if (isClosedOrder && selectedOrder!.mixedPaymentDetails != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -659,30 +729,8 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Pending Payments",),
-      actions: [
-        Column(
-          children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue, // Tugma rangi ko'k
-                padding: EdgeInsets.symmetric(horizontal: 25, vertical: 10), // Kattalashtirish
-                textStyle: TextStyle(
-                  fontSize: 20, // Matn o'lchami kattaroq
-                  fontWeight: FontWeight.bold, // Qalin qilib yoziladi
-                ),
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => PendingOrdersPage()),
-                );
-              },
-              child: Text("To‘lovni qabul qilish"),
-            ),
-          ],
-        )
-      ],
+      appBar: AppBar(
+        title: const Text("Zakazlar boshqaruvi"),
       ),
       body: Stack(
         children: [
@@ -787,6 +835,22 @@ class _PendingPaymentsPageState extends State<PendingPaymentsPage> {
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    // Table headers for closed orders
+                    if (selectedDateRange == "closed")
+                      Container(
+                        color: Colors.grey[300],
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Row(
+                          children: [
+                            _buildHeaderCell('Data', flex: 2),
+                            _buildHeaderCell('Order', flex: 2),
+                            _buildHeaderCell('Table', flex: 1),
+                            _buildHeaderCell('Waiter', flex: 2),
+                            _buildHeaderCell('Items', flex: 1),
+                            _buildHeaderCell('Total', flex: 2),
+                          ],
+                        ),
+                      ),
                     Expanded(
                       child: Container(
                         color: Colors.white,

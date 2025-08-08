@@ -107,7 +107,7 @@ class OrderItem {
 
 class PosScreen extends StatefulWidget {
   final User user;
-  const PosScreen({super.key, required this.user});
+  const PosScreen({super.key, required this.user, required token});
 
   @override
   State<PosScreen> createState() => _PosScreenState();
@@ -1245,6 +1245,8 @@ class OrderScreenContent extends StatefulWidget {
   State<OrderScreenContent> createState() => _OrderScreenContentState();
 }
 
+
+
 class _OrderScreenContentState extends State<OrderScreenContent> {
   String? _selectedCategoryId;
   String _selectedCategoryName = '';
@@ -1256,6 +1258,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   String? _error;
   String? _token;
   bool _isSubmitting = false;
+  Map<String, List<Ovqat>> foodsBySubcategory = {};
 
   final List<CartItem> _cart = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
@@ -1328,22 +1331,104 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
-  // Optimized filtering
+  Future<void> _fetchData() async {
+    try {
+      final categoryResponse = await http.get(
+        Uri.parse('https://sora-b.vercel.app/api/categories/list'),
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+
+      final productResponse = await http.get(
+        Uri.parse('https://sora-b.vercel.app/api/products/list'),
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+
+      if (categoryResponse.statusCode == 200 && productResponse.statusCode == 200) {
+        final categoryData = json.decode(categoryResponse.body) as List;
+        final productData = json.decode(productResponse.body) as List;
+
+        setState(() {
+          _categories = categoryData.map((e) => Category.fromJson(e)).toList();
+          _allProducts = productData.map((e) => Ovqat.fromJson(e)).toList();
+          _filteredProducts = _allProducts; // boshlanishida hammasini ko'rsatadi
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Serverdan ma\'lumot olishda xatolik');
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Levenshtein masofasini hisoblash funksiyasi
+  int _levenshteinDistance(String a, String b) {
+    final List<List<int>> matrix = List.generate(
+      a.length + 1,
+          (_) => List<int>.filled(b.length + 1, 0),
+    );
+
+    for (int i = 0; i <= a.length; i++) {
+      matrix[i][0] = i;
+    }
+    for (int j = 0; j <= b.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (int i = 1; i <= a.length; i++) {
+      for (int j = 1; j <= b.length; j++) {
+        int cost = (a[i - 1].toLowerCase() == b[j - 1].toLowerCase()) ? 0 : 1;
+        matrix[i][j] = [
+          matrix[i - 1][j] + 1, // deletion
+          matrix[i][j - 1] + 1, // insertion
+          matrix[i - 1][j - 1] + cost, // substitution
+        ].reduce((min, val) => min < val ? min : val);
+      }
+    }
+    return matrix[a.length][b.length];
+  }
+
+  // Qisman moslikni tekshirish funksiyasi
+  bool _isPartialMatch(String productName, String subcategory) {
+    final String productLower = productName.toLowerCase();
+    final String subLower = subcategory.toLowerCase();
+
+    // 1. To'g'ridan-to'g'ri qisman moslik
+    if (productLower.contains(subLower) || subLower.contains(productLower)) {
+      return true;
+    }
+
+    // 2. Levenshtein masofasi orqali yaqinlikni tekshirish
+    final int distance = _levenshteinDistance(productLower, subLower);
+    final int maxLength = productLower.length > subLower.length ? productLower.length : subLower.length;
+    final double similarity = 1 - (distance / maxLength);
+
+    // 70% dan yuqori moslik bo'lsa, qabul qilamiz
+    return similarity >= 0.7;
+  }
+
+  // Yangilangan filtratsiya
   void _filterProductsByCategory() {
     if (_selectedCategoryId == null) {
-      _filteredProducts = [];
+      setState(() {
+        _filteredProducts = [];
+      });
       return;
     }
 
     List<Ovqat> filtered;
 
     if (_selectedSubcategory != null) {
-      // Subcategory bo'yicha filter
+      final subLower = _selectedSubcategory!.toLowerCase();
+
+      // Qisman moslikni tekshirish
       filtered = _allProducts.where((product) =>
       product.categoryId == _selectedCategoryId &&
-          product.subcategories == _selectedSubcategory).toList();
+          _isPartialMatch(product.name, subLower)).toList();
     } else {
-      // Faqat category bo'yicha filter
       filtered = _allProducts.where((product) =>
       product.categoryId == _selectedCategoryId).toList();
     }
@@ -1353,16 +1438,24 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     });
   }
 
-  void _selectCategory(String categoryId, String categoryName, {String? subcategory}) {
-    // Agar bir xil kategoriya tanlansa, qayta filter qilmaymiz
-    if (_selectedCategoryId == categoryId && _selectedSubcategory == subcategory) {
-      return;
-    }
+  void _filterProducts() {
+    setState(() {
+      _filteredProducts = _allProducts.where((product) {
+        final bool matchesCategory = _selectedCategoryId == null || product.categoryId == _selectedCategoryId;
+        final bool matchesSubcategory = _selectedSubcategory == null || product.subcategories == _selectedSubcategory;
+        return matchesCategory && matchesSubcategory;
+      }).toList();
+    });
+  }
 
-    _selectedCategoryId = categoryId;
-    _selectedCategoryName = categoryName;
-    _selectedSubcategory = subcategory;
-    _filterProductsByCategory();
+  void _selectCategory(String categoryId, String categoryTitle, {String? subcategory}) {
+    setState(() {
+      _selectedCategoryId = categoryId;
+      _selectedCategoryName = categoryTitle;
+      _selectedSubcategory = subcategory;
+    });
+
+    _filterProductsByCategory(); // Har gal tanlanganda mahsulotlar yangilanadi
   }
 
   void _addToCart(Ovqat product) {
@@ -1421,14 +1514,33 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
-  // Optimized order creation
+// Flutter code to create an order and print to multiple network printers
+
   Future<void> _createOrderAndPrint() async {
     if (_isSubmitting || _cart.isEmpty) return;
+
+    // Savat validatsiyasi
+    for (var item in _cart) {
+      if (item.product?.id == null || item.quantity <= 0) {
+        _showSnackBar('Noto\'g\'ri mahsulot ma\'lumoti topildi', AppColors.error);
+        return;
+      }
+    }
 
     setState(() => _isSubmitting = true);
 
     try {
-      // JSON ni oldindan tayyorlaymiz
+      // Kategoriyalardan printer IP'larini olish
+      Set<String> categoryPrinterIPs = {};
+      for (var category in _categories) {
+        if (category.printerIp != null && category.printerIp.isNotEmpty && category.printerIp != 'null') {
+          categoryPrinterIPs.add(category.printerIp);
+          print('🖨️ Kategoriya "${category.title}" dan printer IP: ${category.printerIp}');
+        }
+      }
+      print('🛒 Barcha kategoriya printer IP\'lari: ${categoryPrinterIPs.toList()}');
+
+      // Prepare order payload
       final items = _cart.map((item) => {
         'food_id': item.product.id,
         'quantity': item.quantity
@@ -1437,10 +1549,12 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       final orderData = {
         'table_id': widget.tableId,
         'user_id': widget.user.id,
-        'first_name': widget.user.firstName,
+        'first_name': widget.user.firstName ?? 'Noma\'lum',
         'items': items,
         'total_price': _calculateTotal(),
       };
+
+      print('🚀 Order data yuborilmoqda: $orderData');
 
       final response = await http.post(
         Uri.parse("https://sora-b.vercel.app/api/orders/create"),
@@ -1449,42 +1563,66 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
           'Authorization': 'Bearer $_token',
         },
         body: jsonEncode(orderData),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
+
+      print('📨 Response status: ${response.statusCode}');
+      print('📨 Response body: ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
-        final printers = responseData['printing']['results'] ?? [];
+        final rawPrinters = responseData['printing']?['results'];
+        final allPrinterIPs = <String>{};
 
-        if (printers.isNotEmpty) {
-          final printerIPs = printers
-              .map<String>((printer) => printer['printer_ip'].toString())
-              .toList();
+        // API'dan kelgan printer IP'larini qo'shish
+        if (rawPrinters is List) {
+          for (var printer in rawPrinters) {
+            final ip = printer['printer_ip']?.toString()?.trim();
+            if (ip != null && ip.isNotEmpty && ip != 'null') {
+              allPrinterIPs.add(ip);
+            }
+          }
+        } else if (rawPrinters != null && rawPrinters['printer_ip'] != null) {
+          final ip = rawPrinters['printer_ip']?.toString()?.trim();
+          if (ip != null && ip.isNotEmpty && ip != 'null') {
+            allPrinterIPs.add(ip);
+          }
+        }
 
-          final printOrderData = {
-            '_id': responseData['order']['id'],
-            'order_number': responseData['order']['order_number'],
-            'waiter_name': widget.user.firstName,
-            'tableName': widget.tableName ?? 'N/A',
-            'cart': _cart.map((item) => {
-              'product': {'name': item.product.name},
-              'quantity': item.quantity
-            }).toList(),
-          };
+        // Kategoriyalardan olingan IP'larni qo'shish
+        allPrinterIPs.addAll(categoryPrinterIPs);
+        print("🖨️ Barcha printer IP'lar (API + kategoriyalar): ${allPrinterIPs.toList()}");
 
-          // Print ni background da bajaramiz
-          _printOrderToAllPrinters(printOrderData, printerIPs).catchError((e) {
-            print('Print xatoligi: $e');
-          });
+        final printOrderData = {
+          '_id': responseData['order']?['id']?.toString() ?? 'N/A',
+          'order_number': responseData['order']?['order_number']?.toString() ??
+              responseData['order_number']?.toString() ?? '0000',
+          'waiter_name': widget.user.firstName ?? 'Noma\'lum',
+          'tableName': widget.tableName ?? 'N/A',
+          'cart': _cart.map((item) => {
+            'product': {'name': item.product.name ?? 'Noma\'lum'},
+            'quantity': item.quantity,
+            'category_name': _getCategoryNameById(item.product.categoryId ?? ''),
+          }).toList(),
+        };
+
+        if (allPrinterIPs.isNotEmpty) {
+          print('🖨️ ${allPrinterIPs.length} ta printerga print qilinmoqda: ${allPrinterIPs.toList()}');
+          final bytes = _preparePrintData(printOrderData);
+          await Future.wait(allPrinterIPs.map((ip) => _printToSinglePrinter(ip, 9100, bytes)));
+          _showSnackBar('${allPrinterIPs.length} ta printerga yuborildi', AppColors.accent);
+        } else {
+          print("⚠️ Printer IP'lar topilmadi.");
+          _showSnackBar('Zakaz yaratildi!', AppColors.accent);
         }
 
         _showSnackBar('Zakaz yaratildi!', AppColors.accent);
         widget.onOrderCreated?.call();
         Navigator.of(context).pop();
       } else {
-        throw Exception('API xatoligi: ${response.statusCode}');
+        throw Exception('API xatoligi: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      _showSnackBar('Xatolik yuz berdi: $e', AppColors.error);
+      print('❌ Zakaz yaratishda xatolik: $e');
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
@@ -1492,117 +1630,122 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
-  // Optimized printing function
-  Future<void> _printOrderToAllPrinters(Map<String, dynamic> orderData, List<String> printerIPs) async {
-    const int port = 9100;
+  String _getCategoryNameById(String categoryId) {
+    if (categoryId.isEmpty) return 'Noma\'lum';
 
-    // Print data ni bir marta tayyorlaymiz
-    final printBytes = _preparePrintData(orderData);
+    final category = _categories.firstWhere(
+          (cat) => cat.id == categoryId,
+      orElse: () => Category(id: '', title: 'Noma\'lum', subcategories: [], printerName: '', printerIp: ''),
+    );
 
-    // Parallel printing
-    final printFutures = printerIPs.map((printerIP) =>
-        _printToSinglePrinter(printerIP, port, printBytes));
+    return category.title ?? 'Noma\'lum';
+  }
 
-    await Future.wait(printFutures);
+  Future<void> _printToSinglePrinter(String printerIP, int port, List<int> bytes) async {
+    print('🔄 Ulanishga urinish: $printerIP:$port');
+    Socket? socket;
+    try {
+      socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 3));
+      print('✅ Ulandi: $printerIP');
+      socket.add(bytes);
+      await socket.flush();
+      print('🖨️ Print yuborildi: $printerIP');
+    } catch (e) {
+      print('❌ Ulanib bo\'lmadi: $printerIP -> $e');
+      throw e;
+    } finally {
+      try {
+        await socket?.close();
+      } catch (e) {
+        print('Socket yopishda xatolik: $e');
+      }
+    }
   }
 
   List<int> _preparePrintData(Map<String, dynamic> orderData) {
     List<int> bytes = [];
 
-    // ESC/POS commands
     List<int> reset() => [0x1B, 0x40];
     List<int> boldOn() => [0x1B, 0x45, 0x01];
     List<int> boldOff() => [0x1B, 0x45, 0x00];
-    List<int> fontSize(int widthMultiplier, int heightMultiplier) =>
-        [0x1D, 0x21, (widthMultiplier - 1) << 4 | (heightMultiplier - 1)];
+    List<int> fontSize(int width, int height) => [0x1D, 0x21, (width - 1) << 4 | (height - 1)];
     List<int> alignCenter() => [0x1B, 0x61, 0x01];
     List<int> alignLeft() => [0x1B, 0x61, 0x00];
     List<int> cut() => [0x1D, 0x56, 0x00];
     List<int> feedLines(int n) => [0x1B, 0x64, n];
     List<int> selectCodePage(int page) => [0x1B, 0x74, page];
 
-    // Ma'lumotlar
-    final orderNumber = orderData['order_number'] ?? '0000';
-    final waiterName = orderData['waiter_name'] ?? 'No Name';
-    final tableName = orderData['tableName'] ?? 'N/A';
+    final orderNumber = orderData['order_number']?.toString() ?? '0000';
+    final waiterName = orderData['waiter_name']?.toString() ?? 'Noma\'lum';
+    final tableName = orderData['tableName']?.toString() ?? 'N/A';
     final cartItems = orderData['cart'] ?? [];
     final dateTimeStr = DateTime.now().toString().substring(0, 19);
 
-    // Print content
     bytes.addAll(reset());
     bytes.addAll(selectCodePage(17));
     bytes.addAll(alignCenter());
 
-    // Order Number
+    // Zakaz raqami uchun katta shrift
     bytes.addAll(fontSize(2, 2));
     bytes.addAll(boldOn());
-    bytes.addAll(_encodeCP1251('ZAKAZ №$orderNumber\n'));
+    bytes.addAll(_encodeCP1251('ZAKAZ : $orderNumber\n'));
     bytes.addAll(boldOff());
 
-    // Date and time
+    // Sana va ofitsiant uchun kichik shrift, bo‘sh qatorlar kamaytirildi
     bytes.addAll(fontSize(1, 1));
     bytes.addAll(_encodeCP1251('$dateTimeStr\n'));
     bytes.addAll(_encodeCP1251('Ofitsiant: $waiterName\n'));
-    bytes.addAll(_encodeCP1251('-------------------------------\n'));
+    bytes.addAll(_encodeCP1251('==============================\n'));
 
-    // Products header
+    // Mahsulotlar ro‘yxati
     bytes.addAll(boldOn());
     bytes.addAll(_encodeCP1251('MAHSULOTLAR\n'));
     bytes.addAll(boldOff());
-    bytes.addAll(_encodeCP1251('Nomi                Soni\n'));
-    bytes.addAll(_encodeCP1251('-------------------------------\n'));
+    bytes.addAll(_encodeCP1251('Nomi                    Soni\n'));
+    bytes.addAll(_encodeCP1251('==============================\n'));
 
-    // Products list
     for (var item in cartItems) {
       String name = item['product']['name'].toString();
       String quantity = '${item['quantity']}x';
-
-      if (name.length > 16) name = name.substring(0, 16);
-      name = name.padRight(20);
-
+      String categoryName = item['category_name']?.toString() ?? 'Noma\'lum';
+      if (name.length > 20) name = name.substring(0, 20);
+      name = name.padRight(24);
       bytes.addAll(alignLeft());
-      bytes.addAll(_encodeCP1251('$name$quantity\n'));
+      bytes.addAll(_encodeCP1251('$name$quantity ($categoryName)\n'));
     }
 
-    bytes.addAll(_encodeCP1251('-------------------------------\n'));
+    bytes.addAll(_encodeCP1251('==============================\n'));
     bytes.addAll(alignCenter());
     bytes.addAll(_encodeCP1251('Stol: $tableName\n'));
-    bytes.addAll(feedLines(4));
+    bytes.addAll(feedLines(5)); // Pastdagi bo‘shliqni saqlab qoldik
     bytes.addAll(cut());
 
     return bytes;
   }
-
-  Future<void> _printToSinglePrinter(String printerIP, int port, List<int> bytes) async {
-    try {
-      final socket = await Socket.connect(printerIP, port,
-          timeout: const Duration(seconds: 2));
-      socket.add(bytes);
-      await socket.flush();
-      await socket.close();
-      print('✅ Print yuborildi: $printerIP');
-    } catch (e) {
-      print('❌ Print xato: $printerIP -> $e');
-    }
-  }
-
   List<int> _encodeCP1251(String text) {
+    if (text.isEmpty) return [];
+
     const cpMap = {0x0401: 0xA8, 0x0451: 0xB8};
     final encoded = <int>[];
 
-    for (var rune in text.runes) {
-      if (rune >= 0x0410 && rune <= 0x042F) {
-        encoded.add(rune - 0x0410 + 0xC0);
-      } else if (rune >= 0x0430 && rune <= 0x044F) {
-        encoded.add(rune - 0x0430 + 0xE0);
-      } else if (cpMap.containsKey(rune)) {
-        encoded.add(cpMap[rune]!);
-      } else if (rune < 128) {
-        encoded.add(rune);
-      } else {
-        encoded.add(0x3F);
+    try {
+      for (var rune in text.runes) {
+        if (rune >= 0x0410 && rune <= 0x042F) {
+          encoded.add(rune - 0x0410 + 0xC0);
+        } else if (rune >= 0x0430 && rune <= 0x044F) {
+          encoded.add(rune - 0x0430 + 0xE0);
+        } else if (cpMap.containsKey(rune)) {
+          encoded.add(cpMap[rune]!);
+        } else if (rune < 128) {
+          encoded.add(rune);
+        } else {
+          encoded.add(0x3F);
+        }
       }
+    } catch (e) {
+      print('Encoding xatoligi: $e');
     }
+
     return encoded;
   }
 

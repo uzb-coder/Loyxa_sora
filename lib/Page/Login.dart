@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import '../Admin/Page/Home_page.dart';
 import '../Controller/usersCOntroller.dart';
 import '../Kassir/Page/Home.dart';
 import 'Home.dart';
@@ -11,8 +13,8 @@ import 'Users_page.dart';
 
 class LoginScreen extends StatefulWidget {
   final User user;
-
-  const LoginScreen({super.key, required this.user});
+  final token;
+  const LoginScreen({super.key, required this.user, this.token});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -97,17 +99,32 @@ class _LoginScreenState extends State<LoginScreen> {
         print("Token: $token");
         print("User Role: $role");
 
+        // 🔐 TOKEN va ROLE ni saqlash
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', token);
+        await prefs.setString('role', role);
+
+        // 🔀 Har bir rol uchun sahifaga token uzatamiz
         if (role == 'afitsant') {
-          print("Navigatsiya: PosScreen ga o‘tmoqda.");
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => PosScreen(user: widget.user)),
+            MaterialPageRoute(
+              builder: (_) => PosScreen(user: widget.user, token: token),
+            ),
           );
         } else if (role == 'kassir') {
-          print("Navigatsiya: KassrPage ga o‘tmoqda.");
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => KassirPage()),
+            MaterialPageRoute(
+              builder: (_) => KassirPage(token: token),
+            ),
+          );
+        } else if (role == "admin") {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ManagerHomePage(token: token, user: widget.user,),
+            ),
           );
         } else {
           setState(() {
@@ -115,6 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
           });
         }
       }
+
       else {
         setState(() {
           _errorMessage = 'Login amalga oshmadi: ${response.statusCode}';
@@ -235,8 +253,10 @@ class _LoginScreenState extends State<LoginScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.blue.shade700, Colors.blue.shade900],
-        ),
+          colors: [
+            Color(0xFF0d5720), // Yashil rang
+            Color(0xFF1a8f34), // Ikkinchi rang (biroz ochroq yashil, misol uchun)
+          ],             ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -385,15 +405,14 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: _login,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 15),
-              backgroundColor: Colors.blue.shade700,
-              foregroundColor: Colors.white,
+              backgroundColor: Color(0xff0a541d), // Yashil rang              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
             child: const Text(
               'Вход',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,color: Colors.white),
             ),
           ),
         ),

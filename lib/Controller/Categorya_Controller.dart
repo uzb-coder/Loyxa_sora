@@ -1,22 +1,27 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart'; // tokenni olish uchun
 
 import '../Model/Categorya_Model.dart';
 
 class CategoryaController {
   static const String baseUrl = "https://sorab.richman.uz/api";
-  final String token =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 
   Future<List<Category>> fetchCategories() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token'); // 🧠 tokenni olish
+
+    if (token == null) {
+      throw Exception("Token topilmadi! Iltimos, qayta login qiling.");
+    }
+
     final url = Uri.parse("$baseUrl/categories/list");
 
     final response = await http.get(
       url,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
+        'Authorization': 'Bearer $token', // ✅ token ishlatildi
       },
     );
 
@@ -26,7 +31,6 @@ class CategoryaController {
       final dynamic decoded = json.decode(response.body);
       print("🔍 decoded turi: ${decoded.runtimeType}");
 
-      // API javobi Map bo'lsa, data kalitini olish
       if (decoded is Map<String, dynamic>) {
         final data = decoded['categories'] ?? decoded['data'] ?? decoded;
         if (data is List) {

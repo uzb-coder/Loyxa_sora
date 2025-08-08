@@ -31,8 +31,8 @@ class _UserListPageState extends State<UserListPage> {
             color: Colors.white,
           ),
         ),
-        backgroundColor: Colors.blue.shade800,
-        elevation: 0,
+        backgroundColor:  Color(0xFF0d5720),
+      elevation: 0,
         centerTitle: true,
       ),
       body: FutureBuilder<List<User>>(
@@ -41,7 +41,7 @@ class _UserListPageState extends State<UserListPage> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(
-                color: Colors.blue,
+                color: Color(0xFF0d5720),
               ),
             );
           } else if (snapshot.hasError) {
@@ -95,8 +95,10 @@ class _UserListPageState extends State<UserListPage> {
                         child: Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
-                              colors: [Colors.blue.shade600, Colors.blue.shade900],
-                              begin: Alignment.topLeft,
+                              colors: [
+                                Color(0xFF0d5720), // Yashil rang
+                                Color(0xFF1a8f34), // Ikkinchi rang (biroz ochroq yashil, misol uchun)
+                              ],                              begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(20),

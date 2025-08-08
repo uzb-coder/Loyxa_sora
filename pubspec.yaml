@@ -50,6 +50,9 @@ dependencies:
   usb_serial: ^0.5.2
   provider: ^6.1.5
   fl_chart: ^1.0.0
+  debounce_throttle: ^2.0.0
+  retry: ^3.1.2
+  data_table_2: ^2.6.0
 
 dev_dependencies:
   flutter_test:

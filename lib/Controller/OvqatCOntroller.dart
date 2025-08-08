@@ -1,13 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../Model/Ovqat_model.dart';
 
 class OvqatController {
   static const String baseUrl = "https://sorab.richman.uz/api";
-  final String token =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODhhYmQxZjVhN2VjODNlNjM1NTAxNzciLCJyb2xlIjoiYWZpdHNhbnQiLCJpYXQiOjE3NTQwMzIwMzMsImV4cCI6MTc1NDYzNjgzM30.T6JGpOvgTQ08yzKYEYd-5wYPpYWV7SQzb2PE4wEQIVw";
 
   Future<List<Ovqat>> fetchProducts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token'); // 🧠 tokenni olish
+
+    if (token == null) {
+      throw Exception("Token topilmadi! Iltimos, qayta login qiling.");
+    }
     // Avval foods endpoint ni sinab ko'ramiz
     final url = Uri.parse("$baseUrl/foods/list");
 
@@ -48,6 +53,12 @@ class OvqatController {
   }
 
   Future<List<Ovqat>> fetchProductsByCategory(String categoryId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token'); // 🧠 tokenni olish
+
+    if (token == null) {
+      throw Exception("Token topilmadi! Iltimos, qayta login qiling.");
+    }
     final url = Uri.parse("$baseUrl/foods/list?category=$categoryId");
 
     final response = await http.get(

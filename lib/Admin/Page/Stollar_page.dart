@@ -1,0 +1,385 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+import 'Blyuda/Stollarni_joylashuv.dart';
+
+class TablesPage extends StatefulWidget {
+  final String token;
+  const TablesPage({super.key, required this.token});
+
+  @override
+  State<TablesPage> createState() => _TablesPageState();
+}
+
+class _TablesPageState extends State<TablesPage> {
+  List<Map<String, dynamic>> tables = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchTables();
+  }
+
+  Future<void> fetchTables() async {
+    final url = Uri.parse("https://sora-b.vercel.app/api/tables/list");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          tables = List<Map<String, dynamic>>.from(data);
+          isLoading = false;
+        });
+      } else {
+        print("Xatolik: ${response.statusCode}");
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      print("Xatolik: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> addNewTable(String number, String capacity) async {
+    final url = Uri.parse("https://sora-b.vercel.app/api/tables/create");
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer ${widget.token}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "number": number,
+        "name": "$number",
+        "capacity": int.tryParse(capacity) ?? 0,
+        "status": "bo'sh",
+        "guest_count": 0,
+        "is_active": true
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      Navigator.of(context).pop();
+      fetchTables();
+    } else {
+      print("Qo‘shishda xatolik: ${response.statusCode}");
+      print("Javob: ${response.body}");
+    }
+  }
+
+  Future<void> deleteTable(String id) async {
+    final url = Uri.parse("https://sora-b.vercel.app/api/tables/delete/$id");
+
+    final response = await http.delete(
+      url,
+      headers: {
+        'Authorization': 'Bearer ${widget.token}',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      fetchTables(); // yangilash
+    } else {
+      print("O‘chirishda xatolik: ${response.statusCode}");
+      print("Javob: ${response.body}");
+    }
+  }
+
+  Future<void> updateTable(String id, String number, String capacity) async {
+    final url = Uri.parse("https://sora-b.vercel.app/api/tables/update/$id");
+
+    final response = await http.put(
+      url,
+      headers: {
+        'Authorization': 'Bearer ${widget.token}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        "number": number,
+        "name": "Stol $number",
+        "capacity": int.tryParse(capacity) ?? 0,
+        "status": "bo'sh",
+        "guest_count": 0,
+        "is_active": true
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      Navigator.of(context).pop();
+      fetchTables();
+    } else {
+      print("Yangilashda xatolik: ${response.statusCode}");
+      print("Javob: ${response.body}");
+    }
+  }
+
+  void showAddTableModal() {
+    final TextEditingController numberController = TextEditingController();
+    final TextEditingController capacityController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.grey[100],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text("Yangi stol qo‘shish", style: TextStyle(color: Colors.black87)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: numberController,
+              keyboardType: TextInputType.text,
+              decoration: const InputDecoration(
+                labelText: "Stol nomi (soni)",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: capacityController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Sig‘imi (nechta kishi)",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Bekor qilish"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue, // ko‘k rang
+            ),
+            onPressed: () {
+              final number = numberController.text.trim();
+              final capacity = capacityController.text.trim();
+              if (number.isNotEmpty && capacity.isNotEmpty) {
+                addNewTable(number, capacity);
+              }
+            },
+            child: const Text("Qo‘shish"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void showEditTableModal(Map<String, dynamic> table) {
+    final TextEditingController numberController = TextEditingController(text: table['number'].toString());
+    final TextEditingController capacityController = TextEditingController(text: table['capacity'].toString());
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.grey[100],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text("Stolni tahrirlash", style: TextStyle(color: Colors.black87)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                labelText: "Stol raqami",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: capacityController,
+              decoration: const InputDecoration(
+                labelText: "Sig‘imi",
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Bekor qilish"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+            ),
+            onPressed: () {
+              final number = numberController.text.trim();
+              final capacity = capacityController.text.trim();
+              if (number.isNotEmpty && capacity.isNotEmpty) {
+                updateTable(table['id'], number, capacity);
+              }
+            },
+            child: const Text("Saqlash"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void showDeleteConfirmationDialog(String id) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.grey[100],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text("O‘chirishni tasdiqlang", style: TextStyle(color: Colors.black87)),
+        content: const Text("Haqiqatan ham o‘chirmoqchimisiz?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Yo‘q"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              deleteTable(id);
+            },
+            child: const Text("Ha"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[200],
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        title: const Text("Stollar ro'yxati"),
+        automaticallyImplyLeading: false, // standart back tugmasi olib tashlandi
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: DataTable(
+                  columnSpacing: 24,
+                  dataRowHeight: 60,
+                  headingRowHeight: 56,
+                  columns: const [
+                    DataColumn(label: Text("Nomi")),
+                    DataColumn(label: Text("Sig‘imi")),
+                    DataColumn(label: Text("Amallar")),
+                  ],
+                  rows: tables.map((table) {
+                    return DataRow(cells: [
+                      DataCell(Text(table['number'].toString())),
+                      DataCell(Text(table['capacity'].toString())),
+                      DataCell(Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () {
+                              showEditTableModal(table);
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () {
+                              showDeleteConfirmationDialog(table['id']);
+                            },
+                          ),
+                        ],
+                      )),
+                    ]);
+                  }).toList(),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        color: Colors.grey[100],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Chapdagi Qaytish buttoni
+            SizedBox(
+              height: 60,
+              width: 150,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.arrow_back, size: 28),
+                label: const Text("Qaytish"),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ),
+
+            // O'rtadagi Qo'shish buttoni
+            SizedBox(
+              height: 60,
+              width: 150,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.add, size: 28),
+                label: const Text("Qo'shish"),
+                onPressed: showAddTableModal,
+              ),
+            ),
+
+            // O'ngdagi Joylashuvga yo'naltirish buttoni
+            SizedBox(
+              height: 60,
+              width: 150,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.location_on, size: 14),
+                label: const Text("Joylashuv"),
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => StollarniJoylashuv()));
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+}
