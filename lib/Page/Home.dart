@@ -17,14 +17,15 @@ import '../Model/Categorya_Model.dart';
 import '../Model/Ovqat_model.dart';
 import '../Model/StolModel.dart';
 import 'Yopilgan_zakaz_page.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 // Asosiy rang sxemasi
 class AppColors {
-  static const primary = Color(0xFF0D5720);
-  static const primaryLight = Color(0xFF0F6B28);
-  static const primaryDark = Color(0xFF094019);
-  static const secondary = Color(0xFF1B8332);
-  static const accent = Color(0xFF22C55E);
+  static const primary = Color(0xFF144D37);
+  static const primaryLight = Color(0xFF144D37);
+  static const primaryDark = Color(0xFF144D37);
+  static const secondary = Color(0xFF144D37);
+  static const accent = Color(0xFF144D37);
   static const surface = Color(0xFFF8FAF9);
   static const white = Colors.white;
   static const grey = Color(0xFF6B7280);
@@ -208,8 +209,7 @@ class _PosScreenState extends State<PosScreen> {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer $_token',
                   },
-                ).timeout(const Duration(seconds: 3));
-
+                );
                 if (response.statusCode == 200) {
                   final List<dynamic> tableOrders = jsonDecode(response.body);
                   bool isOccupied = tableOrders.any((order) => order['status'] == 'pending');
@@ -284,7 +284,7 @@ class _PosScreenState extends State<PosScreen> {
 
     try {
       final stolController = StolController();
-      final tables = await stolController.fetchTables().timeout(const Duration(seconds: 5));
+      final tables = await stolController.fetchTables(),
 
       // Cache'ga saqlaymiz
       _cachedTables = tables;
@@ -334,7 +334,7 @@ class _PosScreenState extends State<PosScreen> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_token',
         },
-      ).timeout(const Duration(seconds: 5));
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -556,7 +556,7 @@ class _PosScreenState extends State<PosScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => OrderTablePage(waiterName: widget.user.firstName),
+                        builder: (context) => OrderTablePage(waiterName: widget.user.firstName,),
                       ),
                     );
                   },
@@ -1197,8 +1197,6 @@ class _PosScreenState extends State<PosScreen> {
   }
 }
 
-// Semaphore class for limiting concurrent requests
-
 class Semaphore {
   int _permits;
   final Queue<Completer<void>> _waitQueue = Queue<Completer<void>>();
@@ -1240,12 +1238,9 @@ class OrderScreenContent extends StatefulWidget {
     this.tableName,
   });
 
-
   @override
   State<OrderScreenContent> createState() => _OrderScreenContentState();
 }
-
-
 
 class _OrderScreenContentState extends State<OrderScreenContent> {
   String? _selectedCategoryId;
@@ -1258,7 +1253,6 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
   String? _error;
   String? _token;
   bool _isSubmitting = false;
-  Map<String, List<Ovqat>> foodsBySubcategory = {};
 
   final List<CartItem> _cart = [];
   final NumberFormat _currencyFormatter = NumberFormat('#,##0', 'uz_UZ');
@@ -1276,7 +1270,6 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     _loadData();
   }
 
-  // Cache tekshirish
   bool _isCacheValid() {
     return _cachedCategories != null &&
         _cachedProducts != null &&
@@ -1288,7 +1281,6 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     try {
       setState(() => _isLoading = true);
 
-      // Cache mavjud bo'lsa ishlatamiz
       if (_isCacheValid()) {
         setState(() {
           _categories = _cachedCategories!;
@@ -1299,16 +1291,20 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         return;
       }
 
-      // Parallel so'rovlar yuboramiz
       final results = await Future.wait([
-        CategoryaController().fetchCategories().timeout(const Duration(seconds: 3)),
-        OvqatController().fetchProducts().timeout(const Duration(seconds: 3)),
+        CategoryaController().fetchCategories(),
+        OvqatController().fetchProducts(),
       ]);
 
       final categories = results[0] as List<Category>;
       final products = results[1] as List<Ovqat>;
 
-      // Cache ga saqlaymiz
+      // Debug uchun kategoriya va subkategoriyalarni ko'rsatish
+      debugPrint('Loaded categories:');
+      for (var cat in categories) {
+        debugPrint('${cat.title} - Subcategories: ${cat.subcategories?.join(', ') ?? "None"}');
+      }
+
       _cachedCategories = categories;
       _cachedProducts = products;
       _lastCacheTime = DateTime.now();
@@ -1331,121 +1327,37 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     }
   }
 
-  Future<void> _fetchData() async {
-    try {
-      final categoryResponse = await http.get(
-        Uri.parse('https://sora-b.vercel.app/api/categories/list'),
-        headers: {'Authorization': 'Bearer $_token'},
-      );
-
-      final productResponse = await http.get(
-        Uri.parse('https://sora-b.vercel.app/api/products/list'),
-        headers: {'Authorization': 'Bearer $_token'},
-      );
-
-      if (categoryResponse.statusCode == 200 && productResponse.statusCode == 200) {
-        final categoryData = json.decode(categoryResponse.body) as List;
-        final productData = json.decode(productResponse.body) as List;
-
-        setState(() {
-          _categories = categoryData.map((e) => Category.fromJson(e)).toList();
-          _allProducts = productData.map((e) => Ovqat.fromJson(e)).toList();
-          _filteredProducts = _allProducts; // boshlanishida hammasini ko'rsatadi
-          _isLoading = false;
-        });
-      } else {
-        throw Exception('Serverdan ma\'lumot olishda xatolik');
-      }
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
-  // Levenshtein masofasini hisoblash funksiyasi
-  int _levenshteinDistance(String a, String b) {
-    final List<List<int>> matrix = List.generate(
-      a.length + 1,
-          (_) => List<int>.filled(b.length + 1, 0),
-    );
-
-    for (int i = 0; i <= a.length; i++) {
-      matrix[i][0] = i;
-    }
-    for (int j = 0; j <= b.length; j++) {
-      matrix[0][j] = j;
-    }
-
-    for (int i = 1; i <= a.length; i++) {
-      for (int j = 1; j <= b.length; j++) {
-        int cost = (a[i - 1].toLowerCase() == b[j - 1].toLowerCase()) ? 0 : 1;
-        matrix[i][j] = [
-          matrix[i - 1][j] + 1, // deletion
-          matrix[i][j - 1] + 1, // insertion
-          matrix[i - 1][j - 1] + cost, // substitution
-        ].reduce((min, val) => min < val ? min : val);
-      }
-    }
-    return matrix[a.length][b.length];
-  }
-
-  // Qisman moslikni tekshirish funksiyasi
-  bool _isPartialMatch(String productName, String subcategory) {
-    final String productLower = productName.toLowerCase();
-    final String subLower = subcategory.toLowerCase();
-
-    // 1. To'g'ridan-to'g'ri qisman moslik
-    if (productLower.contains(subLower) || subLower.contains(productLower)) {
-      return true;
-    }
-
-    // 2. Levenshtein masofasi orqali yaqinlikni tekshirish
-    final int distance = _levenshteinDistance(productLower, subLower);
-    final int maxLength = productLower.length > subLower.length ? productLower.length : subLower.length;
-    final double similarity = 1 - (distance / maxLength);
-
-    // 70% dan yuqori moslik bo'lsa, qabul qilamiz
-    return similarity >= 0.7;
-  }
-
-  // Yangilangan filtratsiya
   void _filterProductsByCategory() {
     if (_selectedCategoryId == null) {
-      setState(() {
-        _filteredProducts = [];
-      });
+      setState(() => _filteredProducts = []);
       return;
     }
 
-    List<Ovqat> filtered;
+    List<Ovqat> filtered = _allProducts.where((product) {
+      // Avvalo kategoriyaga qarab filtr
+      if (product.categoryId != _selectedCategoryId) return false;
 
-    if (_selectedSubcategory != null) {
-      final subLower = _selectedSubcategory!.toLowerCase();
+      // Agar subkategoriya tanlanmagan bo'lsa, barchasini qaytar
+      if (_selectedSubcategory == null || _selectedSubcategory!.isEmpty) return true;
 
-      // Qisman moslikni tekshirish
-      filtered = _allProducts.where((product) =>
-      product.categoryId == _selectedCategoryId &&
-          _isPartialMatch(product.name, subLower)).toList();
-    } else {
-      filtered = _allProducts.where((product) =>
-      product.categoryId == _selectedCategoryId).toList();
-    }
+      // Subkategoriya bo'yicha filtr
+      final productName = product.name.toLowerCase();
+      final subcategory = _selectedSubcategory!.toLowerCase();
 
-    setState(() {
-      _filteredProducts = filtered;
-    });
-  }
+      // 1. Subkategoriya nomi mahsulot nomida yoki aksincha bo'lsa
+      if (productName.contains(subcategory) || subcategory.contains(productName)) {
+        return true;
+      }
 
-  void _filterProducts() {
-    setState(() {
-      _filteredProducts = _allProducts.where((product) {
-        final bool matchesCategory = _selectedCategoryId == null || product.categoryId == _selectedCategoryId;
-        final bool matchesSubcategory = _selectedSubcategory == null || product.subcategories == _selectedSubcategory;
-        return matchesCategory && matchesSubcategory;
-      }).toList();
-    });
+      // 2. Mahsulotning subkategoriya maydoni bor bo'lsa va u mos keladigan bo'lsa
+      if (product.subcategory?.toLowerCase() == subcategory) {
+        return true;
+      }
+
+      return false;
+    }).toList();
+
+    setState(() => _filteredProducts = filtered);
   }
 
   void _selectCategory(String categoryId, String categoryTitle, {String? subcategory}) {
@@ -1455,7 +1367,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       _selectedSubcategory = subcategory;
     });
 
-    _filterProductsByCategory(); // Har gal tanlanganda mahsulotlar yangilanadi
+    _filterProductsByCategory();
   }
 
   void _addToCart(Ovqat product) {
@@ -1479,14 +1391,16 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     });
   }
 
-  // Memoized calculation
   double _calculateTotal() {
     return _cart.fold(0.0, (total, item) => total + (item.product.price * item.quantity));
   }
 
   int _getQuantityInCart(Ovqat product) {
-    final existingItem = _cart.where((item) => item.product.id == product.id);
-    return existingItem.isEmpty ? 0 : existingItem.first.quantity;
+    final existingItem = _cart.firstWhere(
+          (item) => item.product.id == product.id,
+      orElse: () => CartItem(product: product, quantity: 0),
+    );
+    return existingItem.quantity;
   }
 
   IconData _getCategoryIcon(String categoryName) {
@@ -1510,263 +1424,22 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
         _token = await AuthService.getToken();
       }
     } catch (e) {
-      print("Token olishda xatolik: $e");
+      debugPrint("Token olishda xatolik: $e");
     }
   }
 
-// Flutter code to create an order and print to multiple network printers
-
-  Future<void> _createOrderAndPrint() async {
-    if (_isSubmitting || _cart.isEmpty) return;
-
-    // Savat validatsiyasi
-    for (var item in _cart) {
-      if (item.product?.id == null || item.quantity <= 0) {
-        _showSnackBar('Noto\'g\'ri mahsulot ma\'lumoti topildi', AppColors.error);
-        return;
-      }
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      // Kategoriyalardan printer IP'larini olish
-      Set<String> categoryPrinterIPs = {};
-      for (var category in _categories) {
-        if (category.printerIp != null && category.printerIp.isNotEmpty && category.printerIp != 'null') {
-          categoryPrinterIPs.add(category.printerIp);
-          print('🖨️ Kategoriya "${category.title}" dan printer IP: ${category.printerIp}');
-        }
-      }
-      print('🛒 Barcha kategoriya printer IP\'lari: ${categoryPrinterIPs.toList()}');
-
-      // Prepare order payload
-      final items = _cart.map((item) => {
-        'food_id': item.product.id,
-        'quantity': item.quantity
-      }).toList();
-
-      final orderData = {
-        'table_id': widget.tableId,
-        'user_id': widget.user.id,
-        'first_name': widget.user.firstName ?? 'Noma\'lum',
-        'items': items,
-        'total_price': _calculateTotal(),
-      };
-
-      print('🚀 Order data yuborilmoqda: $orderData');
-
-      final response = await http.post(
-        Uri.parse("https://sora-b.vercel.app/api/orders/create"),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-        body: jsonEncode(orderData),
-      ).timeout(const Duration(seconds: 15));
-
-      print('📨 Response status: ${response.statusCode}');
-      print('📨 Response body: ${response.body}');
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        final rawPrinters = responseData['printing']?['results'];
-        final allPrinterIPs = <String>{};
-
-        // API'dan kelgan printer IP'larini qo'shish
-        if (rawPrinters is List) {
-          for (var printer in rawPrinters) {
-            final ip = printer['printer_ip']?.toString()?.trim();
-            if (ip != null && ip.isNotEmpty && ip != 'null') {
-              allPrinterIPs.add(ip);
-            }
-          }
-        } else if (rawPrinters != null && rawPrinters['printer_ip'] != null) {
-          final ip = rawPrinters['printer_ip']?.toString()?.trim();
-          if (ip != null && ip.isNotEmpty && ip != 'null') {
-            allPrinterIPs.add(ip);
-          }
-        }
-
-        // Kategoriyalardan olingan IP'larni qo'shish
-        allPrinterIPs.addAll(categoryPrinterIPs);
-        print("🖨️ Barcha printer IP'lar (API + kategoriyalar): ${allPrinterIPs.toList()}");
-
-        final printOrderData = {
-          '_id': responseData['order']?['id']?.toString() ?? 'N/A',
-          'order_number': responseData['order']?['order_number']?.toString() ??
-              responseData['order_number']?.toString() ?? '0000',
-          'waiter_name': widget.user.firstName ?? 'Noma\'lum',
-          'tableName': widget.tableName ?? 'N/A',
-          'cart': _cart.map((item) => {
-            'product': {'name': item.product.name ?? 'Noma\'lum'},
-            'quantity': item.quantity,
-            'category_name': _getCategoryNameById(item.product.categoryId ?? ''),
-          }).toList(),
-        };
-
-        if (allPrinterIPs.isNotEmpty) {
-          print('🖨️ ${allPrinterIPs.length} ta printerga print qilinmoqda: ${allPrinterIPs.toList()}');
-          final bytes = _preparePrintData(printOrderData);
-          await Future.wait(allPrinterIPs.map((ip) => _printToSinglePrinter(ip, 9100, bytes)));
-          _showSnackBar('${allPrinterIPs.length} ta printerga yuborildi', AppColors.accent);
-        } else {
-          print("⚠️ Printer IP'lar topilmadi.");
-          _showSnackBar('Zakaz yaratildi!', AppColors.accent);
-        }
-
-        _showSnackBar('Zakaz yaratildi!', AppColors.accent);
-        widget.onOrderCreated?.call();
-        Navigator.of(context).pop();
-      } else {
-        throw Exception('API xatoligi: ${response.statusCode} - ${response.body}');
-      }
-    } catch (e) {
-      print('❌ Zakaz yaratishda xatolik: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  String _getCategoryNameById(String categoryId) {
-    if (categoryId.isEmpty) return 'Noma\'lum';
-
-    final category = _categories.firstWhere(
-          (cat) => cat.id == categoryId,
-      orElse: () => Category(id: '', title: 'Noma\'lum', subcategories: [], printerName: '', printerIp: ''),
-    );
-
-    return category.title ?? 'Noma\'lum';
-  }
-
-  Future<void> _printToSinglePrinter(String printerIP, int port, List<int> bytes) async {
-    print('🔄 Ulanishga urinish: $printerIP:$port');
-    Socket? socket;
-    try {
-      socket = await Socket.connect(printerIP, port, timeout: const Duration(seconds: 3));
-      print('✅ Ulandi: $printerIP');
-      socket.add(bytes);
-      await socket.flush();
-      print('🖨️ Print yuborildi: $printerIP');
-    } catch (e) {
-      print('❌ Ulanib bo\'lmadi: $printerIP -> $e');
-      throw e;
-    } finally {
-      try {
-        await socket?.close();
-      } catch (e) {
-        print('Socket yopishda xatolik: $e');
-      }
-    }
-  }
-
-  List<int> _preparePrintData(Map<String, dynamic> orderData) {
-    List<int> bytes = [];
-
-    List<int> reset() => [0x1B, 0x40];
-    List<int> boldOn() => [0x1B, 0x45, 0x01];
-    List<int> boldOff() => [0x1B, 0x45, 0x00];
-    List<int> fontSize(int width, int height) => [0x1D, 0x21, (width - 1) << 4 | (height - 1)];
-    List<int> alignCenter() => [0x1B, 0x61, 0x01];
-    List<int> alignLeft() => [0x1B, 0x61, 0x00];
-    List<int> cut() => [0x1D, 0x56, 0x00];
-    List<int> feedLines(int n) => [0x1B, 0x64, n];
-    List<int> selectCodePage(int page) => [0x1B, 0x74, page];
-
-    final orderNumber = orderData['order_number']?.toString() ?? '0000';
-    final waiterName = orderData['waiter_name']?.toString() ?? 'Noma\'lum';
-    final tableName = orderData['tableName']?.toString() ?? 'N/A';
-    final cartItems = orderData['cart'] ?? [];
-    final dateTimeStr = DateTime.now().toString().substring(0, 19);
-
-    bytes.addAll(reset());
-    bytes.addAll(selectCodePage(17));
-    bytes.addAll(alignCenter());
-
-    // Zakaz raqami uchun katta shrift
-    bytes.addAll(fontSize(2, 2));
-    bytes.addAll(boldOn());
-    bytes.addAll(_encodeCP1251('ZAKAZ : $orderNumber\n'));
-    bytes.addAll(boldOff());
-
-    // Sana va ofitsiant uchun kichik shrift, bo‘sh qatorlar kamaytirildi
-    bytes.addAll(fontSize(1, 1));
-    bytes.addAll(_encodeCP1251('$dateTimeStr\n'));
-    bytes.addAll(_encodeCP1251('Ofitsiant: $waiterName\n'));
-    bytes.addAll(_encodeCP1251('==============================\n'));
-
-    // Mahsulotlar ro‘yxati
-    bytes.addAll(boldOn());
-    bytes.addAll(_encodeCP1251('MAHSULOTLAR\n'));
-    bytes.addAll(boldOff());
-    bytes.addAll(_encodeCP1251('Nomi                    Soni\n'));
-    bytes.addAll(_encodeCP1251('==============================\n'));
-
-    for (var item in cartItems) {
-      String name = item['product']['name'].toString();
-      String quantity = '${item['quantity']}x';
-      String categoryName = item['category_name']?.toString() ?? 'Noma\'lum';
-      if (name.length > 20) name = name.substring(0, 20);
-      name = name.padRight(24);
-      bytes.addAll(alignLeft());
-      bytes.addAll(_encodeCP1251('$name$quantity ($categoryName)\n'));
-    }
-
-    bytes.addAll(_encodeCP1251('==============================\n'));
-    bytes.addAll(alignCenter());
-    bytes.addAll(_encodeCP1251('Stol: $tableName\n'));
-    bytes.addAll(feedLines(5)); // Pastdagi bo‘shliqni saqlab qoldik
-    bytes.addAll(cut());
-
-    return bytes;
-  }
-  List<int> _encodeCP1251(String text) {
-    if (text.isEmpty) return [];
-
-    const cpMap = {0x0401: 0xA8, 0x0451: 0xB8};
-    final encoded = <int>[];
-
-    try {
-      for (var rune in text.runes) {
-        if (rune >= 0x0410 && rune <= 0x042F) {
-          encoded.add(rune - 0x0410 + 0xC0);
-        } else if (rune >= 0x0430 && rune <= 0x044F) {
-          encoded.add(rune - 0x0430 + 0xE0);
-        } else if (cpMap.containsKey(rune)) {
-          encoded.add(cpMap[rune]!);
-        } else if (rune < 128) {
-          encoded.add(rune);
-        } else {
-          encoded.add(0x3F);
-        }
-      }
-    } catch (e) {
-      print('Encoding xatoligi: $e');
-    }
-
-    return encoded;
-  }
-
-  void _showSnackBar(String message, Color color) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
+  // ... (print qilish va boshqa yordamchi funksiyalar avvalgidek qoladi)
 
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 1200;
     final isTablet = screenWidth >= 600 && screenWidth <= 1200;
+
+    final selectedCategory = _categories.firstWhere(
+          (cat) => cat.id == _selectedCategoryId,
+      orElse: () => Category(id: '', title: 'Kategoriyani tanlang', subcategories: [], printerName: '', printerIp: ''),
+    );
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -1785,7 +1458,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: _buildProductsSection(isDesktop, isTablet),
+                    child: _buildProductsSection(isDesktop, isTablet, selectedCategory),
                   ),
                 ],
               ),
@@ -1922,7 +1595,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                       width: _selectedCategoryId == category.id ? 2 : 1,
                     ),
                   ),
-                  child: ExpansionTile(
+                  child: ListTile(
                     leading: Icon(
                       _getCategoryIcon(category.title),
                       size: 18,
@@ -1941,41 +1614,9 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    onExpansionChanged: (expanded) {
-                      if (expanded) {
-                        _selectCategory(category.id, category.title);
-                      }
+                    onTap: () {
+                      _selectCategory(category.id, category.title);
                     },
-                    children: category.subcategories.map((subcategory) {
-                      final bool isSubcategorySelected =
-                          _selectedCategoryId == category.id &&
-                              _selectedSubcategory == subcategory;
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        title: Text(
-                          subcategory,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: isSubcategorySelected
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                            color: isSubcategorySelected
-                                ? AppColors.primary
-                                : AppColors.grey,
-                          ),
-                        ),
-                        onTap: () {
-                          _selectCategory(
-                            category.id,
-                            category.title,
-                            subcategory: subcategory,
-                          );
-                        },
-                      );
-                    }).toList(),
                   ),
                 );
               },
@@ -1986,7 +1627,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 
-  Widget _buildProductsSection(bool isDesktop, bool isTablet) {
+  Widget _buildProductsSection(bool isDesktop, bool isTablet, Category selectedCategory) {
     return Container(
       margin: const EdgeInsets.only(right: 16),
       decoration: BoxDecoration(
@@ -2018,7 +1659,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                 const SizedBox(width: 8),
                 Text(
                   _selectedCategoryName.isNotEmpty
-                      ? '$_selectedCategoryName${_selectedSubcategory != null ? " ($_selectedSubcategory)" : " (Barchasi)"}'
+                      ? '$_selectedCategoryName${_selectedSubcategory != null ? " ($_selectedSubcategory)" : ""}'
                       : 'Mahsulotlar',
                   style: const TextStyle(
                     fontSize: 16,
@@ -2029,6 +1670,36 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
               ],
             ),
           ),
+          if (selectedCategory.subcategories != null && selectedCategory.subcategories.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Subkategoriya:',
+                    style: TextStyle(fontSize: 12, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 40,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _buildSubcategoryChip(null, 'Barchasi'),
+                        const SizedBox(width: 8),
+                        ...selectedCategory.subcategories.map((sub) =>
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _buildSubcategoryChip(sub, sub),
+                            )
+                        ).toList(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -2044,10 +1715,12 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                 ),
               )
                   : _filteredProducts.isEmpty
-                  ? const Center(
+                  ? Center(
                 child: Text(
-                  'Bu kategoriyada mahsulot yo\'q',
-                  style: TextStyle(color: AppColors.grey),
+                  _selectedCategoryId == null
+                      ? 'Kategoriyani tanlang'
+                      : 'Bu kategoriyada mahsulot yo\'q',
+                  style: const TextStyle(color: AppColors.grey),
                 ),
               )
                   : GridView.builder(
@@ -2070,6 +1743,32 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 
+  Widget _buildSubcategoryChip(String? subcategory, String label) {
+    final isActive = _selectedSubcategory == subcategory;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isActive,
+      onSelected: (selected) {
+        _selectCategory(
+            _selectedCategoryId!,
+            _selectedCategoryName,
+            subcategory: selected ? subcategory : null
+        );
+      },
+      selectedColor: AppColors.primary,
+      labelStyle: TextStyle(
+        color: isActive ? Colors.white : Colors.black,
+      ),
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isActive ? AppColors.primary : AppColors.lightGrey,
+        ),
+      ),
+    );
+  }
+
   Widget _buildProductCard(Ovqat product, bool isDesktop) {
     final int quantityInCart = _getQuantityInCart(product);
     final double totalPrice = product.price * quantityInCart;
@@ -2078,33 +1777,33 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
       onTap: () => _addToCart(product),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFF144D37), // ✅ Orqa fon
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: quantityInCart > 0 ? AppColors.primary : Colors.grey[300]!,
+            color: quantityInCart > 0 ? Colors.white : Colors.grey[400]!,
             width: quantityInCart > 0 ? 2 : 1,
           ),
-          boxShadow: quantityInCart > 0
-              ? [
+          boxShadow: [
             BoxShadow(
-              color: AppColors.primary.withOpacity(0.1),
-              offset: const Offset(0, 2),
-              blurRadius: 4,
+              color: Colors.black.withOpacity(0.15),
+              offset: const Offset(0, 4),
+              blurRadius: 6,
             )
-          ]
-              : null,
+          ],
         ),
+        padding: const EdgeInsets.all(8),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // Narxi
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(6),
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(7),
-                  topRight: Radius.circular(7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
                 ),
               ),
               child: Text(
@@ -2115,95 +1814,376 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(4),
-                child: Text(
-                  product.name,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
+
+            // Nomi
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              child: Text(
+                product.name,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ),
+
+            // + / - tugmalar
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (quantityInCart > 0) ...[
+                  GestureDetector(
+                    onTap: () {
+                      _updateQuantity(
+                        _cart.firstWhere((item) => item.product.id == product.id),
+                        -1,
+                      );
+                    },
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.remove, size: 18, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '$quantityInCart',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                GestureDetector(
+                  onTap: () => _addToCart(product),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(Icons.add, size: 18, color: const Color(0xFF144D37)),
+                  ),
+                ),
+              ],
+            ),
+
+            // Jami summa
             if (quantityInCart > 0)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                color: AppColors.accent.withOpacity(0.1),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                margin: const EdgeInsets.only(top: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(8),
+                    bottomRight: Radius.circular(8),
+                  ),
+                ),
                 child: Text(
                   'Jami: ${_currencyFormatter.format(totalPrice)} so\'m',
                   style: const TextStyle(
-                    fontSize: 8,
-                    color: AppColors.accent,
+                    fontSize: 10,
+                    color: Colors.white,
                     fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
               ),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (quantityInCart > 0) ...[
-                    GestureDetector(
-                      onTap: () {
-                        _updateQuantity(
-                          _cart.firstWhere((item) => item.product.id == product.id),
-                          -1,
-                        );
-                      },
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: AppColors.error,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.remove, size: 12, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                      child: Text(
-                        '$quantityInCart',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                  ],
-                  GestureDetector(
-                    onTap: () => _addToCart(product),
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.add, size: 12, color: Colors.white),
-                    ),
-                  ),
-                ],
+          ],
+        ),
+      ),
+    );
+  }
+
+
+
+  Future<void> _createOrderAndPrint() async {
+    if (_isSubmitting || _cart.isEmpty) return;
+
+    for (var item in _cart) {
+      if (item.product?.id == null || item.quantity <= 0) {
+        _showSnackBar('Noto\'g\'ri mahsulot ma\'lumoti topildi', AppColors.error);
+        return;
+      }
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final items = _cart.map((item) => {
+        'food_id': item.product.id,
+        'quantity': item.quantity,
+      }).toList();
+
+      final orderData = {
+        'table_id': widget.tableId,
+        'user_id': widget.user.id,
+        'first_name': widget.user.firstName ?? 'Noma\'lum',
+        'items': items,
+        'total_price': _calculateTotal(),
+      };
+
+      // API so'rovi vaqtini o'lchash
+      final apiStartTime = DateTime.now();
+      final response = await http.post(
+        Uri.parse("https://sora-b.vercel.app/api/orders/create"),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_token',
+        },
+        body: jsonEncode(orderData),
+      );// Timeout 7 soniyaga qisqartirildi
+      if (kDebugMode) {
+        print('API javob vaqti: ${DateTime.now().difference(apiStartTime).inMilliseconds} ms');
+      }
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        final rawPrinters = responseData['printing']?['results'];
+        final allPrinterIPs = <String>{};
+
+        if (rawPrinters is List) {
+          for (var printer in rawPrinters) {
+            final ip = printer['printer_ip']?.toString()?.trim();
+            if (ip != null && ip.isNotEmpty && ip != 'null') {
+              allPrinterIPs.add(ip);
+            }
+          }
+        }
+
+        final printOrderData = {
+          '_id': responseData['order']?['id']?.toString() ?? 'N/A',
+          'order_number': responseData['order']?['order_number']?.toString() ??
+              responseData['order_number']?.toString() ??
+              '0000',
+          'waiter_name': widget.user.firstName ?? 'Noma\'lum',
+          'tableName': widget.tableName ?? 'N/A',
+          'cart': _cart.map((item) => {
+            'product': {'name': item.product.name ?? 'Noma\'lum'},
+            'quantity': item.quantity,
+            'category_name': _getCategoryNameById(item.product.categoryId ?? ''),
+          }).toList(),
+        };
+
+        if (allPrinterIPs.isNotEmpty) {
+          try {
+            // Chop etish ma'lumotlarini oldindan tayyorlash
+            final bytes = _preparePrintData(printOrderData);
+            // Har bir printerga 1 soniyalik timeout bilan ulanish
+            final printFutures = allPrinterIPs.map((ip) => _printToSinglePrinter(ip, 9100, bytes)
+                .timeout(const Duration(seconds: 10), onTimeout: () {
+              if (kDebugMode) print('❌ Timeout: $ip ga ulanish vaqti o\'tdi');
+              return; // Timeout bo'lsa, xato qaytarmaymiz
+            })
+                .catchError((e) {
+              if (kDebugMode) print('❌ Ulanib bo\'lmadi: $ip -> $e');
+              return; // Xatoni e'tiborsiz qoldiramiz
+            }));
+
+            await Future.wait(printFutures);
+            _showSnackBar('${allPrinterIPs.length} ta printerga yuborish urinildi', AppColors.accent);
+          } catch (e) {
+            if (kDebugMode) print("⚠️ Printerga yuborishda xatolik: $e");
+            _showSnackBar("Zakaz yaratildi, lekin printerga yuborilmadi", AppColors.warning);
+          }
+        } else {
+          _showSnackBar('Zakaz yaratildi! (Printer topilmadi)', AppColors.accent);
+        }
+
+        widget.onOrderCreated?.call();
+        // Navigatorni darhol yopish
+        if (Navigator.canPop(context)) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+      } else {
+        throw Exception('API xatoligi: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Zakaz yaratishda xatolik: $e');
+      }
+      _showErrorDialog(context, "❌ Mahsulot omborda yetarli miqdor yo'q");
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+  void _showErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.red[50], // Fon rangi
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.error, color: Colors.red, size: 28),
+            const SizedBox(width: 8),
+            Text(
+              "Xatolik",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.red[900],
               ),
             ),
           ],
         ),
+        content: Text(
+          message,
+          style: TextStyle(fontSize: 18, color: Colors.black87),
+        ),
+        actions: [
+          TextButton(
+            child: const Text("OK"),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _printToSinglePrinter(String printerIP, int port, List<int> bytes) async {
+    if (kDebugMode) print('🔄 Ulanishga urinish: $printerIP:$port');
+    Socket? socket;
+    try {
+      socket = await Socket.connect(printerIP, port,);
+      if (kDebugMode) print('✅ Ulandi: $printerIP');
+      socket.add(bytes);
+      await socket.flush();
+      if (kDebugMode) print('🖨️ Print yuborildi: $printerIP');
+    } catch (e) {
+      throw e; // Xatoni yuqoriga qaytarish
+    } finally {
+      try {
+        await socket?.close();
+      } catch (e) {
+        if (kDebugMode) print('Socket yopishda xatolik: $e');
+      }
+    }
+  }
+
+
+  String _getCategoryNameById(String categoryId) {
+    if (categoryId.isEmpty) return 'Noma\'lum';
+    final category = _categories.firstWhere(
+          (cat) => cat.id == categoryId,
+      orElse: () => Category(
+          id: '',
+          title: 'Noma\'lum',
+          subcategories: [],
+          printerName: '',
+          printerIp: ''
+      ),
+    );
+    return category.title ?? 'Noma\'lum';
+  }
+
+
+  List<int> _preparePrintData(Map<String, dynamic> orderData) {
+    List<int> bytes = [];
+    List<int> reset() => [0x1B, 0x40];
+    List<int> boldOn() => [0x1B, 0x45, 0x01];
+    List<int> boldOff() => [0x1B, 0x45, 0x00];
+    List<int> fontSize(int width, int height) => [0x1D, 0x21, (width - 1) << 4 | (height - 1)];
+    List<int> alignCenter() => [0x1B, 0x61, 0x01];
+    List<int> alignLeft() => [0x1B, 0x61, 0x00];
+    List<int> cut() => [0x1D, 0x56, 0x00];
+    List<int> feedLines(int n) => [0x1B, 0x64, n];
+    List<int> selectCodePage(int page) => [0x1B, 0x74, page];
+
+    final orderNumber = orderData['order_number']?.toString() ?? '0000';
+    final waiterName = orderData['waiter_name']?.toString() ?? 'Noma\'lum';
+    final tableName = orderData['tableName']?.toString() ?? 'N/A';
+    final cartItems = orderData['cart'] ?? [];
+    final dateTimeStr = DateTime.now().toString().substring(0, 19);
+
+    bytes.addAll(reset());
+    bytes.addAll(selectCodePage(17));
+    bytes.addAll(alignCenter());
+    bytes.addAll(fontSize(2, 2));
+    bytes.addAll(boldOn());
+    bytes.addAll(_encodeCP1251('ZAKAZ : $orderNumber\n'));
+    bytes.addAll(boldOff());
+    bytes.addAll(fontSize(1, 1));
+    bytes.addAll(_encodeCP1251('$dateTimeStr\n'));
+    bytes.addAll(_encodeCP1251('Ofitsiant: $waiterName\n'));
+    bytes.addAll(_encodeCP1251('==============================\n'));
+    bytes.addAll(boldOn());
+    bytes.addAll(_encodeCP1251('MAHSULOTLAR\n'));
+    bytes.addAll(boldOff());
+    bytes.addAll(_encodeCP1251('Nomi                    Soni\n'));
+    bytes.addAll(_encodeCP1251('==============================\n'));
+
+    for (var item in cartItems) {
+      String name = item['product']['name'].toString();
+      String quantity = '${item['quantity']}x';
+      String categoryName = item['category_name']?.toString() ?? 'Noma\'lum';
+      if (name.length > 20) name = name.substring(0, 20);
+      name = name.padRight(24);
+      bytes.addAll(alignLeft());
+      bytes.addAll(_encodeCP1251('$name$quantity ($categoryName)\n'));
+    }
+
+    bytes.addAll(_encodeCP1251('==============================\n'));
+    bytes.addAll(alignCenter());
+    bytes.addAll(_encodeCP1251('Stol: $tableName\n'));
+    bytes.addAll(feedLines(5));
+    bytes.addAll(cut());
+
+    return bytes;
+  }
+
+  List<int> _encodeCP1251(String text) {
+    if (text.isEmpty) return [];
+    const cpMap = {0x0401: 0xA8, 0x0451: 0xB8};
+    final encoded = <int>[];
+    try {
+      for (var rune in text.runes) {
+        if (rune >= 0x0410 && rune <= 0x042F) {
+          encoded.add(rune - 0x0410 + 0xC0);
+        } else if (rune >= 0x0430 && rune <= 0x044F) {
+          encoded.add(rune - 0x0430 + 0xE0);
+        } else if (cpMap.containsKey(rune)) {
+          encoded.add(cpMap[rune]!);
+        } else if (rune < 128) {
+          encoded.add(rune);
+        } else {
+          encoded.add(0x3F);
+        }
+      }
+    } catch (e) {
+      print('Encoding xatoligi: $e');
+    }
+    return encoded;
+  }
+
+  void _showSnackBar(String message, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -2250,7 +2230,7 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: isDesktop ? 300 : 250),
             child: ElevatedButton.icon(
-              onPressed: (isCartEmpty || _isSubmitting) ? null : _createOrderAndPrint,
+              onPressed: (isCartEmpty || _isSubmitting) ? null : _createOrderAndPrint, // Tuzatilgan callback
               icon: _isSubmitting
                   ? const SizedBox(
                 width: 18,
@@ -2287,7 +2267,6 @@ class _OrderScreenContentState extends State<OrderScreenContent> {
     );
   }
 
-  // Cache ni tozalash uchun static method
   static void clearCache() {
     _cachedCategories = null;
     _cachedProducts = null;

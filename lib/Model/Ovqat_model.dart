@@ -22,6 +22,7 @@ class Ovqat {
   final double price;
   final String categoryId;
   final String categoryName;
+  final String? subcategory; // Added subcategory field
   final String? description;
   final String? image;
   final List<Subcategory> subcategories;
@@ -32,6 +33,7 @@ class Ovqat {
     required this.price,
     required this.categoryId,
     required this.categoryName,
+    this.subcategory,
     this.description,
     this.image,
     required this.subcategories,
@@ -47,6 +49,7 @@ class Ovqat {
       price: (json['price'] ?? 0).toDouble(),
       categoryId: json['category']?['_id'] ?? json['category_id'] ?? '',
       categoryName: json['category']?['title'] ?? json['category_name'] ?? '',
+      subcategory: json['subcategory'], // Added subcategory parsing
       description: json['description'],
       image: json['image'],
       subcategories: subcategoriesList,
@@ -59,6 +62,7 @@ class Ovqat {
       'name': name,
       'price': price,
       'category': {'_id': categoryId, 'title': categoryName},
+      'subcategory': subcategory, // Added subcategory to JSON
       'description': description,
       'image': image,
       'subcategories': subcategories.map((e) => e.toJson()).toList(),

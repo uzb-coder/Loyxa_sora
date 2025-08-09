@@ -154,15 +154,11 @@ class _CategoryTablePageState extends State<CategoryTablePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
-        title: const Text(
-          "Kategoriya jadvali",
-          style: TextStyle(color: Colors.black),
-        ),
         elevation: 1,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ElevatedButton.icon(
+        automaticallyImplyLeading: false, // <<< Orqaga qaytish tugmasini yo'qotadi
+        title: Row(
+          children: [
+            ElevatedButton.icon(
               onPressed: _openAddCategoryModal,
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text(
@@ -172,11 +168,12 @@ class _CategoryTablePageState extends State<CategoryTablePage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
-          )
-        ],
+          ],
+        ),
       ),
       body: Container(
         color: const Color(0xFFF5F5F5),

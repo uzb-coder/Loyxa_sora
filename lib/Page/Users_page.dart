@@ -31,7 +31,7 @@ class _UserListPageState extends State<UserListPage> {
             color: Colors.white,
           ),
         ),
-        backgroundColor:  Color(0xFF0d5720),
+        backgroundColor:  Color(0xFF144D37),
       elevation: 0,
         centerTitle: true,
       ),
@@ -41,7 +41,7 @@ class _UserListPageState extends State<UserListPage> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(
-                color: Color(0xFF0d5720),
+                color: Color(0xFF144D37),
               ),
             );
           } else if (snapshot.hasError) {
@@ -96,8 +96,8 @@ class _UserListPageState extends State<UserListPage> {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                Color(0xFF0d5720), // Yashil rang
-                                Color(0xFF1a8f34), // Ikkinchi rang (biroz ochroq yashil, misol uchun)
+                                Color(0xFF144D37), // Yashil rang
+                                Color(0xFF144D37), // Ikkinchi rang (biroz ochroq yashil, misol uchun)
                               ],                              begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),

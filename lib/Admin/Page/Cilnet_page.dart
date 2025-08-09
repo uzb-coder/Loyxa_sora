@@ -496,59 +496,80 @@ class _ClientPageState extends State<ClientPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100, // Oq kulrang fon
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text("Mijozlar Ro'yxati"),
-        backgroundColor: Colors.grey.shade300,
-        actions: [
-          ElevatedButton(
-            onPressed: _showAddClientModal,
-            child: Text("Yangi mijoz qo'shish"),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              textStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+        backgroundColor: Colors.white,
+        elevation: 1,
+        automaticallyImplyLeading: false,
+        title: Row(
+          children: [
+            ElevatedButton.icon(
+              onPressed: _showAddClientModal,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                "Foydalanuvchi yaratish",
+                style: TextStyle(color: Colors.white),
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-              ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red, fontSize: 16),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
-              : LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minWidth: constraints.maxWidth,
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.vertical,
-                        child: _buildDataTable(),
-                      ),
-                    ),
-                  );
-                },
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            _error!,
+            style: const TextStyle(color: Colors.red, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      )
+          : LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth: constraints.maxWidth,
               ),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: _buildDataTable(),
+              ),
+            ),
+          );
+        },
+      ),
+      /// 🟢 Quyidagisi qo‘shildi:
+      floatingActionButton: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.of(context).pop(); // Yoki logout funksiyasi
+        },
+        label: const Text("Выход"),
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(120, 70),
+          backgroundColor: const Color(0xFFF5F5F5),
+          foregroundColor: Colors.black87,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Colors.grey, width: 2),
+          ),
+          shadowColor: Colors.black.withOpacity(0.2),
+          elevation: 6,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+      ),
+
     );
   }
+
 }

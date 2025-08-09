@@ -50,13 +50,13 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF5a5a5a), // Orqa fon rangi
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(50.0),
-        child: AppBar(
-          automaticallyImplyLeading: false,
-          backgroundColor: const Color(0xFF6b6b6b),
-          elevation: 2.0,
-          title: Row(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: const Color(0xFF6b6b6b),
+        elevation: 2.0,
+        title: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Row(
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,28 +80,65 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
               ),
             ],
           ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => PersonalRestoran(token: widget.token,)));
-              },
-              child: const Text('Персонал ресторана', style: TextStyle(color: Colors.white, fontSize: 20,)),
-            ),
-            const SizedBox(width: 5),
-            TextButton(
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => TablesPage(token: widget.token,)));
-              },
-              child: const Text('Залы', style: TextStyle(color: Colors.white, fontSize: 20)),
-            ),
-            const SizedBox(width: 5),
-            TextButton(
-              onPressed: () {},
-              child: const Text('Настройки', style: TextStyle(color: Colors.white, fontSize: 20)),
-            ),
-            const SizedBox(width: 20),
-          ],
         ),
+        actions: <Widget>[
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => PersonalRestoran(token: widget.token,)));
+            },
+            style: ElevatedButton.styleFrom(
+              minimumSize: Size(120, 70),
+              backgroundColor: Color(0xFFF5F5F5),
+              foregroundColor: Colors.black87,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey, width: 2),
+              ),
+              shadowColor: Colors.black.withOpacity(0.2),
+              elevation: 6,
+              padding: EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: const Text('Персонал ресторана'),
+          ),
+          const SizedBox(width: 5),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => TablesPage(token: widget.token,)));
+            },
+            style: ElevatedButton.styleFrom(
+              minimumSize: Size(120, 70),
+              backgroundColor: Color(0xFFF5F5F5),
+              foregroundColor: Colors.black87,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey, width: 2),
+              ),
+              shadowColor: Colors.black.withOpacity(0.2),
+              elevation: 6,
+              padding: EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: const Text('Залы'),
+          ),
+          const SizedBox(width: 5),
+          ElevatedButton(
+            onPressed: () {
+            },
+            style: ElevatedButton.styleFrom(
+              minimumSize: Size(120, 70),
+              backgroundColor: Color(0xFFF5F5F5),
+              foregroundColor: Colors.black87,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.grey, width: 2),
+              ),
+              shadowColor: Colors.black.withOpacity(0.2),
+              elevation: 6,
+              padding: EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: const Text('Настройки'),
+          ),
+          const SizedBox(width: 20),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -112,7 +149,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       bottomNavigationBar: Container(
         height: 60,
         color: const Color(0xFFcccccc),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
@@ -123,12 +160,16 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => ClientPage(token: widget.token,)));
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFe0e0e0),
-                    foregroundColor: Colors.black,
+                    minimumSize: Size(120, 70),
+                    backgroundColor: Color(0xFFF5F5F5),
+                    foregroundColor: Colors.black87,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: Colors.grey, width: 2),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                    shadowColor: Colors.black.withOpacity(0.2),
+                    elevation: 6,
+                    padding: EdgeInsets.symmetric(horizontal: 10),
                   ),
                   child: const Text('Клиенты'),
                 ),
@@ -139,12 +180,16 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
 
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFe0e0e0),
-                    foregroundColor: Colors.black,
+                    minimumSize: Size(120, 70),
+                    backgroundColor: Color(0xFFF5F5F5),
+                    foregroundColor: Colors.black87,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: Colors.grey, width: 2),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                    shadowColor: Colors.black.withOpacity(0.2),
+                    elevation: 6,
+                    padding: EdgeInsets.symmetric(horizontal: 10),
                   ),
                   child: const Text('Блюда'),
                 ),
@@ -155,12 +200,16 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFe0e0e0),
-                foregroundColor: Colors.black,
+                minimumSize: Size(120, 70),
+                backgroundColor: Color(0xFFF5F5F5),
+                foregroundColor: Colors.black87,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(5),
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: Colors.grey, width: 2),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                shadowColor: Colors.black.withOpacity(0.2),
+                elevation: 6,
+                padding: EdgeInsets.symmetric(horizontal: 10),
               ),
               child: const Text('Выход'),
             ),

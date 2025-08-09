@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart'; // 🆕 Qo‘shildi
 import 'package:data_table_2/data_table_2.dart';
+import 'package:web_socket_channel/status.dart' as status;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 class Printer {
   final String id;
@@ -49,16 +52,58 @@ class PrinterTablePage extends StatefulWidget {
 class _PrinterTablePageState extends State<PrinterTablePage> {
   List<Printer> printers = [];
   bool isLoading = true;
+  WebSocketChannel? _channel;
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _ipController = TextEditingController();
+
+  // 🆕 IP tarmoqda ishlayaptimi tekshiradigan funksiya
+  Future<bool> checkPrinterOnline(String ip) async {
+    try {
+      final socket = await Socket.connect(ip, 9100, timeout: Duration(seconds: 2));
+      socket.destroy();
+      return true; // Ulandi → Online
+    } catch (e) {
+      return false; // Ulana olmadi → Offline
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     loadCacheAndFetch(); // 🔄
+    connectToSocket(); // 🆕 real-time ulanish
+
   }
 
+  @override
+  void dispose() {
+    _channel?.sink.close(status.goingAway); // ✅ faqat sahifa yopilganda
+    super.dispose();
+  }
+  void connectToSocket() {
+    _channel = WebSocketChannel.connect(
+      Uri.parse('wss://sora-b.vercel.app/printer-status'), // server WS URL
+    );
+
+    _channel!.stream.listen((message) {
+      final data = jsonDecode(message);
+
+      setState(() {
+        // `id` bo‘yicha printerni topib, statusini yangilaymiz
+        final index = printers.indexWhere((p) => p.id == data['id']);
+        if (index != -1) {
+          printers[index] = Printer(
+            id: printers[index].id,
+            name: printers[index].name,
+            ip: printers[index].ip,
+            status: data['status'],
+            lastChecked: data['lastChecked'] ?? printers[index].lastChecked,
+          );
+        }
+      });
+    });
+  }
   Future<void> loadCacheAndFetch() async {
     await loadCachedPrinters(); // 🆕
     fetchPrinters(); // serverdan fon rejimida yangilaydi
@@ -92,16 +137,34 @@ class _PrinterTablePageState extends State<PrinterTablePage> {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final List list = data['printers'];
-      final newPrinters = list.map((json) => Printer.fromJson(json)).toList();
+
+      List<Printer> loadedPrinters = [];
+      for (var json in list) {
+        var printer = Printer.fromJson(json);
+        bool isOnline = await checkPrinterOnline(printer.ip);
+        loadedPrinters.add(
+          Printer(
+            id: printer.id,
+            name: printer.name,
+            ip: printer.ip,
+            status: isOnline ? 'online' : 'offline',
+            lastChecked: DateTime.now().toString(),
+          ),
+        );
+      }
+
       setState(() {
-        printers = newPrinters;
+        printers = loadedPrinters;
         isLoading = false;
       });
-      savePrintersToCache(newPrinters); // 🆕
+
+      savePrintersToCache(loadedPrinters);
     } else {
       setState(() => isLoading = false);
     }
   }
+
+
 
   Future<void> createPrinter() async {
     final name = _nameController.text.trim();
@@ -257,33 +320,33 @@ class _PrinterTablePageState extends State<PrinterTablePage> {
       ),
     );
   }
-
+//  onPressed: () => showPrinterDialog(),
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text("Printerlar ro'yxati"),
-        elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: ElevatedButton.icon(
-              onPressed: () => showPrinterDialog(),
+      appBar:AppBar(
+        backgroundColor: Colors.white,
+        elevation: 1,
+        automaticallyImplyLeading: false, // <<< Orqaga qaytish tugmasini yo'qotadi
+        title: Row(
+          children: [
+            ElevatedButton.icon(
+            onPressed: () => showPrinterDialog(),
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text(
-                "Bo'lim qo'shish",
+                "Printer yaratish",
                 style: TextStyle(color: Colors.white),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2196F3), // Ko‘k rang
+                backgroundColor: Colors.blue,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -319,7 +382,17 @@ class _PrinterTablePageState extends State<PrinterTablePage> {
                     return DataRow(cells: [
                       DataCell(Text(printer.name)),
                       DataCell(Text(printer.ip)),
-                      DataCell(Text(printer.status)),
+                      DataCell(
+                        Text(
+                          printer.status,
+                          style: TextStyle(
+                            color: printer.status.toLowerCase() == 'online'
+                                ? Colors.green
+                                : Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                       DataCell(Row(
                         children: [
                           IconButton(

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../Tajriba.dart';
 import 'Blyuda.dart';
 import 'Printer.dart';
 import 'kategorya.dart';
@@ -48,7 +49,7 @@ class _MainScreenState extends State<MainScreen> {
       'Kategorya',
       'Blyuda',
       'Printer',
-      'Chiqish',
+      'Выход',
     ];
 
     return Scaffold(
@@ -70,14 +71,16 @@ class _MainScreenState extends State<MainScreen> {
                 return ElevatedButton(
                   onPressed: () => _onTabTapped(index),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _selectedIndex == index
-                        ? Colors.grey
-                        : Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
+                    minimumSize: Size(120, 70),
+                    backgroundColor: Color(0xFFF5F5F5),
+                    foregroundColor: Colors.black87,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: Colors.grey, width: 2),
                     ),
+                    shadowColor: Colors.black.withOpacity(0.2),
+                    elevation: 6,
+                    padding: EdgeInsets.symmetric(horizontal: 10),
                   ),
                   child: Text(
                     buttonTitles[index],

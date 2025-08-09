@@ -33,7 +33,7 @@ class _TablesPageState extends State<TablesPage> {
           'Content-Type': 'application/json',
         },
       );
-
+      print("Stollar malumot : ${response.body}");
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         setState(() {
@@ -50,7 +50,7 @@ class _TablesPageState extends State<TablesPage> {
     }
   }
 
-  Future<void> addNewTable(String number, String capacity) async {
+  Future<void> addNewTable(String number, String guestCount) async {
     final url = Uri.parse("https://sora-b.vercel.app/api/tables/create");
 
     final response = await http.post(
@@ -61,10 +61,9 @@ class _TablesPageState extends State<TablesPage> {
       },
       body: jsonEncode({
         "number": number,
-        "name": "$number",
-        "capacity": int.tryParse(capacity) ?? 0,
+        "name": number, // name = number
+        "guest_count": int.tryParse(guestCount) ?? 0,
         "status": "bo'sh",
-        "guest_count": 0,
         "is_active": true
       }),
     );
@@ -97,7 +96,7 @@ class _TablesPageState extends State<TablesPage> {
     }
   }
 
-  Future<void> updateTable(String id, String number, String capacity) async {
+  Future<void> updateTable(String id, String number, String guestCount) async {
     final url = Uri.parse("https://sora-b.vercel.app/api/tables/update/$id");
 
     final response = await http.put(
@@ -109,13 +108,12 @@ class _TablesPageState extends State<TablesPage> {
       body: jsonEncode({
         "number": number,
         "name": "Stol $number",
-        "capacity": int.tryParse(capacity) ?? 0,
+        "capacity": 0,
         "status": "bo'sh",
-        "guest_count": 0,
+        "guest_count": int.tryParse(guestCount) ?? 0,
         "is_active": true
       }),
     );
-
     if (response.statusCode == 200) {
       Navigator.of(context).pop();
       fetchTables();
@@ -127,7 +125,7 @@ class _TablesPageState extends State<TablesPage> {
 
   void showAddTableModal() {
     final TextEditingController numberController = TextEditingController();
-    final TextEditingController capacityController = TextEditingController();
+    final TextEditingController guestCountController = TextEditingController();
 
     showDialog(
       context: context,
@@ -140,18 +138,17 @@ class _TablesPageState extends State<TablesPage> {
           children: [
             TextField(
               controller: numberController,
-              keyboardType: TextInputType.text,
               decoration: const InputDecoration(
-                labelText: "Stol nomi (soni)",
+                labelText: "Stol raqami (number)",
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: capacityController,
+              controller: guestCountController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: "Sig‘imi (nechta kishi)",
+                labelText: "Mehmonlar soni (guest_count)",
                 border: OutlineInputBorder(),
               ),
             ),
@@ -164,13 +161,13 @@ class _TablesPageState extends State<TablesPage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue, // ko‘k rang
+              backgroundColor: Color(0xFF144D37),
             ),
             onPressed: () {
               final number = numberController.text.trim();
-              final capacity = capacityController.text.trim();
-              if (number.isNotEmpty && capacity.isNotEmpty) {
-                addNewTable(number, capacity);
+              final guestCount = guestCountController.text.trim();
+              if (number.isNotEmpty && guestCount.isNotEmpty) {
+                addNewTable(number, guestCount);
               }
             },
             child: const Text("Qo‘shish"),
@@ -180,9 +177,10 @@ class _TablesPageState extends State<TablesPage> {
     );
   }
 
+
   void showEditTableModal(Map<String, dynamic> table) {
     final TextEditingController numberController = TextEditingController(text: table['number'].toString());
-    final TextEditingController capacityController = TextEditingController(text: table['capacity'].toString());
+    final TextEditingController guestCountController = TextEditingController(text: table['guest_count'].toString());
 
     showDialog(
       context: context,
@@ -202,9 +200,9 @@ class _TablesPageState extends State<TablesPage> {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: capacityController,
+              controller: guestCountController,
               decoration: const InputDecoration(
-                labelText: "Sig‘imi",
+                labelText: "Mehmonlar soni",
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
@@ -222,9 +220,9 @@ class _TablesPageState extends State<TablesPage> {
             ),
             onPressed: () {
               final number = numberController.text.trim();
-              final capacity = capacityController.text.trim();
-              if (number.isNotEmpty && capacity.isNotEmpty) {
-                updateTable(table['id'], number, capacity);
+              final guestCount = guestCountController.text.trim();
+              if (number.isNotEmpty && guestCount.isNotEmpty) {
+                updateTable(table['id'], number, guestCount);
               }
             },
             child: const Text("Saqlash"),
@@ -233,6 +231,7 @@ class _TablesPageState extends State<TablesPage> {
       ),
     );
   }
+
 
   void showDeleteConfirmationDialog(String id) {
     showDialog(
@@ -268,8 +267,9 @@ class _TablesPageState extends State<TablesPage> {
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: const Text("Stollar ro'yxati"),
+        centerTitle: true,
+        backgroundColor: Colors.white,
+        title: const Text("Stollar ro'yxati",style: TextStyle(color: Colors.black),),
         automaticallyImplyLeading: false, // standart back tugmasi olib tashlandi
       ),
       body: isLoading
@@ -294,11 +294,11 @@ class _TablesPageState extends State<TablesPage> {
                   rows: tables.map((table) {
                     return DataRow(cells: [
                       DataCell(Text(table['number'].toString())),
-                      DataCell(Text(table['capacity'].toString())),
+                      DataCell(Text(table['guest_count'].toString())), // Qo‘shildi
                       DataCell(Row(
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            icon: const Icon(Icons.edit, color: Color(0xFF144D37)),
                             onPressed: () {
                               showEditTableModal(table);
                             },
@@ -325,57 +325,78 @@ class _TablesPageState extends State<TablesPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Chapdagi Qaytish buttoni
             SizedBox(
               height: 60,
               width: 150,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  minimumSize: Size(120, 70),
+                  backgroundColor: Color(0xFFF5F5F5),
+                  foregroundColor: Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey, width: 2),
+                  ),
+                  shadowColor: Colors.black.withOpacity(0.2),
+                  elevation: 6,
+                  padding: EdgeInsets.symmetric(horizontal: 10),
                 ),
-                icon: const Icon(Icons.arrow_back, size: 28),
-                label: const Text("Qaytish"),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-              ),
-            ),
-
-            // O'rtadagi Qo'shish buttoni
-            SizedBox(
-              height: 60,
-              width: 150,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.add, size: 28),
-                label: const Text("Qo'shish"),
-                onPressed: showAddTableModal,
-              ),
-            ),
-
-            // O'ngdagi Joylashuvga yo'naltirish buttoni
-            SizedBox(
-              height: 60,
-              width: 150,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.location_on, size: 14),
+                icon: const Icon(Icons.location_on, size: 28),
                 label: const Text("Joylashuv"),
                 onPressed: () {
                   Navigator.of(context).push(MaterialPageRoute(builder: (_) => StollarniJoylashuv()));
                 },
               ),
             ),
+            // O'rtadagi Qo'shish buttoni
+            SizedBox(
+              height: 60,
+              width: 150,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  minimumSize: Size(120, 70),
+                  backgroundColor: Color(0xFFF5F5F5),
+                  foregroundColor: Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey, width: 2),
+                  ),
+                  shadowColor: Colors.black.withOpacity(0.2),
+                  elevation: 6,
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                ),
+                icon: const Icon(Icons.add, size: 32),
+                label: const Text("Qo'shish"),
+                onPressed: showAddTableModal,
+              ),
+            ),
+
+            // Chapdagi Qaytish buttoni
+            SizedBox(
+              height: 60,
+              width: 150,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  minimumSize: Size(120, 70),
+                  backgroundColor: Color(0xFFF5F5F5),
+                  foregroundColor: Colors.black87,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.grey, width: 2),
+                  ),
+                  shadowColor: Colors.black.withOpacity(0.2),
+                  elevation: 6,
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                ),
+                label: const Text("Выход"),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ),
+
+            // O'ngdagi Joylashuvga yo'naltirish buttoni
+
           ],
         ),
       ),

@@ -287,6 +287,7 @@ class OrderService {
     // Agar kesh bo'sh yoki muddati o'tgan bo'lsa, serverdan olish
     final url = Uri.parse('$baseUrl/orders/pending-payments');
     try {
+
       final response = await http.get(
         url,
         headers: {
@@ -294,8 +295,9 @@ class OrderService {
           'Content-Type': 'application/json',
         },
       );
-
       if (response.statusCode == 200) {
+        print("APIIII :::::::::::::::: {$response.body}");
+
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['pending_orders'] != null) {
           List<OrderModel> orders =

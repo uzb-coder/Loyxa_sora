@@ -246,36 +246,29 @@ class _UserPageState extends State<PersonalRestoran> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white, // Oq fon
-      appBar: AppBar(
-        backgroundColor: Colors.grey[200],
-        title: const Text(
-          "Foydalanuvchilar",
-          style: TextStyle(color: Colors.black),
-        ),
-        iconTheme: const IconThemeData(color: Colors.black),
-        elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: ElevatedButton(
-              onPressed: _openAddUserModal,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
+       appBar:  AppBar(
+          backgroundColor: Colors.white,
+          elevation: 1,
+          automaticallyImplyLeading: false, // <<< Orqaga qaytish tugmasini yo'qotadi
+          title: Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _openAddUserModal,
+                icon: const Icon(Icons.add, color: Colors.white),
+                label: const Text(
+                  "Foydalanuvchi yaratish",
+                  style: TextStyle(color: Colors.white),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
-              child: const Text("Foydalanuvchi qo‘shish"),
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
       body: users.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : Padding(
@@ -356,6 +349,24 @@ class _UserPageState extends State<PersonalRestoran> {
               }).toList(),
             ),
           ),
+        ),
+      ),
+      floatingActionButton: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.of(context).pop(); // Yoki logout funksiyasi
+        },
+        label: const Text("Выход"),
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(120, 70),
+          backgroundColor: const Color(0xFFF5F5F5),
+          foregroundColor: Colors.black87,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Colors.grey, width: 2),
+          ),
+          shadowColor: Colors.black.withOpacity(0.2),
+          elevation: 6,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
         ),
       ),
     );

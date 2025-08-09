@@ -254,8 +254,8 @@ class _LoginScreenState extends State<LoginScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF0d5720), // Yashil rang
-            Color(0xFF1a8f34), // Ikkinchi rang (biroz ochroq yashil, misol uchun)
+            Color(0xFF144D37), // Yashil rang
+            Color(0xFF144D37), // Ikkinchi rang (biroz ochroq yashil, misol uchun)
           ],             ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -405,7 +405,7 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: _login,
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 15),
-              backgroundColor: Color(0xff0a541d), // Yashil rang              foregroundColor: Colors.white,
+              backgroundColor: Color(0xFF144D37), // Yashil rang              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
